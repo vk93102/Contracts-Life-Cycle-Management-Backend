@@ -18,6 +18,28 @@ A Contract Lifecycle Management (CLM) platform backend built with Django, Supaba
 - ✅ Delete contracts with file cleanup
 - ✅ Complete audit trail via WorkflowLog
 
+## 📦 Deployment
+
+### Render.com Deployment
+
+1. **Environment Variables** (set these as secrets in Render):
+   - `DJANGO_SECRET_KEY`: Your Django secret key
+   - `JWT_SECRET_KEY`: Your JWT secret key
+   - `DB_NAME`: postgres
+   - `DB_USER`: Your Supabase database user
+   - `DB_PASSWORD`: Your Supabase database password
+   - `DB_HOST`: Your Supabase database host
+   - `DB_PORT`: 5432
+   - `SUPABASE_URL`: Your Supabase project URL
+   - `SUPABASE_ANON_KEY`: Your Supabase anonymous key
+   - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key
+
+2. **Deploy Options**:
+   - Use `render.yaml` for automated deployment
+   - Or use `build.sh` + `Procfile` for manual configuration
+
+3. **Start Command**: `gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT`
+
 ## 🏗️ Architecture
 
 - **Authentication**: Supabase JWT (HS256) with tenant isolation
