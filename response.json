@@ -1,0 +1,293 @@
+{
+  "api_version": "v1",
+  "base_url": "http://127.0.0.1:8888/api",
+  "endpoints": {
+    "register": {
+      "endpoint": "/auth/register/",
+      "method": "POST",
+      "description": "Register a new user",
+      "request_body": {
+        "email": "test@example.com",
+        "password": "password123",
+        "full_name": "Test User"
+      },
+      "response": {
+        "error": "User with this email already exists"
+      },
+      "status_code": 400,
+      "success": true
+    },
+    "login": {
+      "endpoint": "/auth/login/",
+      "method": "POST",
+      "description": "Authenticate user and get JWT tokens",
+      "request_body": {
+        "email": "test@example.com",
+        "password": "password123"
+      },
+      "response": {
+        "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3NTI0MjA5LCJpYXQiOjE3Njc0Mzc4MDksImp0aSI6IjU5ZmZjNWEwODI0MTQ1ZWI5MzZmZGViZTM5N2VjMDRkIiwidXNlcl9pZCI6IjViOGYwNjA5LTEyZjUtNDBjYi1iYTJkLTk1YjgwYjQ0Y2ZkMCJ9.FC1dd21IvXkhTny4QEkjgKO0osmon6gFwC0OyO40m5g",
+        "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODA0MjYwOSwiaWF0IjoxNzY3NDM3ODA5LCJqdGkiOiIwZjc0OTU0OGVmNzc0MDRhYWQzM2I1MTYyY2U2ZTgyMCIsInVzZXJfaWQiOiI1YjhmMDYwOS0xMmY1LTQwY2ItYmEyZC05NWI4MGI0NGNmZDAifQ.tLA8mqhxpnp9wvGzvjY2K8RqzJ5NanCKW69dvSJ5gXI",
+        "user": {
+          "user_id": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+          "email": "test@example.com",
+          "first_name": "Test",
+          "last_name": "User",
+          "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+          "is_staff": false
+        }
+      },
+      "status_code": 200,
+      "success": true
+    },
+    "current_user": {
+      "endpoint": "/auth/me/",
+      "method": "GET",
+      "description": "Get current user information",
+      "request_body": {},
+      "response": {
+        "user_id": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+        "email": "test@example.com",
+        "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+        "is_staff": false
+      },
+      "status_code": 200,
+      "success": true
+    },
+    "contracts_list": {
+      "endpoint": "/contracts/",
+      "method": "GET",
+      "description": "List all contracts",
+      "request_body": {},
+      "response": {
+        "count": 3,
+        "next": null,
+        "previous": null,
+        "results": [
+          {
+            "id": "c3e50bad-0ccc-4a48-8aef-88d41473b67b",
+            "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+            "title": "Test Contract",
+            "contract_type": "service_agreement",
+            "status": "draft",
+            "value": null,
+            "counterparty": null,
+            "start_date": null,
+            "end_date": null,
+            "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+            "created_at": "2026-01-03T05:31:44.651071Z",
+            "updated_at": "2026-01-03T05:31:44.651094Z"
+          },
+          {
+            "id": "def9510d-21a6-4958-9ae0-8631debb71fa",
+            "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+            "title": "Test Contract",
+            "contract_type": "service_agreement",
+            "status": "draft",
+            "value": null,
+            "counterparty": null,
+            "start_date": null,
+            "end_date": null,
+            "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+            "created_at": "2026-01-03T05:30:20.899686Z",
+            "updated_at": "2026-01-03T05:30:20.899722Z"
+          },
+          {
+            "id": "575a15a4-a94d-43f4-82da-84caa11d1fd7",
+            "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+            "title": "Test Contract",
+            "contract_type": "service_agreement",
+            "status": "draft",
+            "value": null,
+            "counterparty": null,
+            "start_date": null,
+            "end_date": null,
+            "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+            "created_at": "2026-01-03T05:29:18.021767Z",
+            "updated_at": "2026-01-03T05:29:18.021825Z"
+          }
+        ]
+      },
+      "status_code": 200,
+      "success": true
+    },
+    "contracts_statistics": {
+      "endpoint": "/contracts/statistics/",
+      "method": "GET",
+      "description": "Get contract statistics",
+      "request_body": {},
+      "response": {
+        "total": 3,
+        "draft": 3,
+        "pending": 0,
+        "approved": 0,
+        "rejected": 0,
+        "executed": 0,
+        "monthly_trends": [
+          {
+            "month": "Aug",
+            "approved": 0,
+            "rejected": 0
+          },
+          {
+            "month": "Sep",
+            "approved": 0,
+            "rejected": 0
+          },
+          {
+            "month": "Oct",
+            "approved": 0,
+            "rejected": 0
+          },
+          {
+            "month": "Nov",
+            "approved": 0,
+            "rejected": 0
+          },
+          {
+            "month": "Dec",
+            "approved": 0,
+            "rejected": 0
+          },
+          {
+            "month": "Jan",
+            "approved": 0,
+            "rejected": 0
+          }
+        ]
+      },
+      "status_code": 200,
+      "success": true
+    },
+    "contracts_recent": {
+      "endpoint": "/contracts/recent/",
+      "method": "GET",
+      "description": "Get recent contracts",
+      "request_body": {},
+      "response": [
+        {
+          "id": "c3e50bad-0ccc-4a48-8aef-88d41473b67b",
+          "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+          "title": "Test Contract",
+          "contract_type": "service_agreement",
+          "status": "draft",
+          "value": null,
+          "counterparty": null,
+          "start_date": null,
+          "end_date": null,
+          "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+          "created_at": "2026-01-03T05:31:44.651071Z",
+          "updated_at": "2026-01-03T05:31:44.651094Z",
+          "created_by_name": "Test User"
+        },
+        {
+          "id": "def9510d-21a6-4958-9ae0-8631debb71fa",
+          "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+          "title": "Test Contract",
+          "contract_type": "service_agreement",
+          "status": "draft",
+          "value": null,
+          "counterparty": null,
+          "start_date": null,
+          "end_date": null,
+          "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+          "created_at": "2026-01-03T05:30:20.899686Z",
+          "updated_at": "2026-01-03T05:30:20.899722Z",
+          "created_by_name": "Test User"
+        },
+        {
+          "id": "575a15a4-a94d-43f4-82da-84caa11d1fd7",
+          "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+          "title": "Test Contract",
+          "contract_type": "service_agreement",
+          "status": "draft",
+          "value": null,
+          "counterparty": null,
+          "start_date": null,
+          "end_date": null,
+          "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+          "created_at": "2026-01-03T05:29:18.021767Z",
+          "updated_at": "2026-01-03T05:29:18.021825Z",
+          "created_by_name": "Test User"
+        }
+      ],
+      "status_code": 200,
+      "success": true
+    },
+    "contracts_create": {
+      "endpoint": "/contracts/",
+      "method": "POST",
+      "description": "Create a new contract",
+      "request_body": {
+        "title": "Test Contract",
+        "description": "A test contract for API testing",
+        "contract_type": "service_agreement",
+        "status": "draft"
+      },
+      "response": {
+        "id": "e3a8cd7c-154c-45d9-a30e-7971f9b581d6",
+        "tenant_id": "648b1a01-437d-4535-b836-725c0fd263b2",
+        "title": "Test Contract",
+        "contract_type": "service_agreement",
+        "status": "draft",
+        "value": null,
+        "counterparty": null,
+        "start_date": null,
+        "end_date": null,
+        "created_by": "5b8f0609-12f5-40cb-ba2d-95b80b44cfd0",
+        "created_at": "2026-01-03T10:57:05.747690Z",
+        "updated_at": "2026-01-03T10:57:05.747748Z"
+      },
+      "status_code": 201,
+      "success": true
+    },
+    "contract_templates": {
+      "endpoint": "/contract-templates/",
+      "method": "GET",
+      "description": "List contract templates",
+      "request_body": {},
+      "response": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "status_code": 200,
+      "success": true
+    },
+    "clauses": {
+      "endpoint": "/clauses/",
+      "method": "GET",
+      "description": "List clauses",
+      "request_body": {},
+      "response": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "status_code": 200,
+      "success": true
+    },
+    "generation_jobs": {
+      "endpoint": "/generation-jobs/",
+      "method": "GET",
+      "description": "List generation jobs",
+      "request_body": {},
+      "response": {
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "results": []
+      },
+      "status_code": 200,
+      "success": true
+    }
+  },
+  "test_date": "2026-01-03T10:56:44.160468Z",
+  "notes": {
+    "authentication": "All endpoints except health check require JWT token in Authorization header",
+    "contract_generation": "Part A features include template-based generation, clause assembly, provenance tracking, alternatives, and business rule validation",
+    "versioning": "Contracts support immutable versioning with full provenance tracking"
+  }
+}
