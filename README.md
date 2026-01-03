@@ -55,6 +55,12 @@ gunicorn app:app --bind 0.0.0.0:$PORT
 - `PYTHON_VERSION`: `3.11.7`
 - All the secrets listed above
 
+### Important Notes:
+- Make sure to **trigger a manual deployment** after updating environment variables
+- The `runtime.txt` specifies Python 3.11.7 for compatibility
+- All dependencies are listed in `requirements.txt`
+- **Last updated**: January 3, 2026
+
 ### Local Development
 
 1. **Install dependencies:**
