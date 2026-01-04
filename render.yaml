@@ -8,7 +8,14 @@ services:
       pip install --upgrade pip &&
       pip install setuptools>=65.0.0 wheel>=0.37.0 &&
       pip install -r requirements.txt --no-cache-dir
-    startCommand: "gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --threads 2 --timeout 30"
+    startCommand: |
+      if [ -f "/opt/render/project/.venv/bin/python" ]; then
+        /opt/render/project/.venv/bin/python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
+      elif [ -f "/opt/render/.venv/bin/python" ]; then
+        /opt/render/.venv/bin/python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
+      else
+        python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
+      fi
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: clm_backend.settings
