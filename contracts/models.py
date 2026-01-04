@@ -88,7 +88,7 @@ class Clause(models.Model):
 
 class Contract(models.Model):
     """
-    Contract model with tenant isolation for RLS
+    Contract model with tenant isolation for RLS and approval workflow
     """
     STATUS_CHOICES = [
         ('draft', 'Draft'),
@@ -96,6 +96,7 @@ class Contract(models.Model):
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('executed', 'Executed'),
+        ('archived', 'Archived'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -120,6 +121,8 @@ class Contract(models.Model):
     approved_by = models.UUIDField(null=True, blank=True, help_text='User ID who approved')
     approved_at = models.DateTimeField(null=True, blank=True, help_text='Approval timestamp')
     created_by = models.UUIDField(help_text='User ID who created the contract')
+    last_edited_by = models.UUIDField(null=True, blank=True, help_text='User ID who last edited the contract')
+    last_edited_at = models.DateTimeField(null=True, blank=True, help_text='Last edit timestamp')
     counterparty = models.CharField(max_length=255, blank=True, null=True, help_text='Counterparty name')
     contract_type = models.CharField(max_length=100, blank=True, null=True, help_text='Type of contract (NDA, MSA, etc.)')
     value = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True, help_text='Contract value')
@@ -127,6 +130,15 @@ class Contract(models.Model):
     end_date = models.DateField(blank=True, null=True, help_text='Contract end date')
     form_inputs = models.JSONField(default=dict, help_text='Structured intake form inputs')
     user_instructions = models.TextField(blank=True, null=True, help_text='Optional user instructions')
+    
+    # Workflow fields
+    approval_required = models.BooleanField(default=True, help_text='Does this contract require approval?')
+    current_approvers = models.JSONField(default=list, help_text='List of user IDs who are current approvers')
+    approval_chain = models.JSONField(default=list, help_text='Sequential approval chain configuration')
+    
+    # Document storage
+    document_r2_key = models.CharField(max_length=500, blank=True, null=True, help_text='R2 key for uploaded document')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -320,3 +332,77 @@ class WorkflowLog(models.Model):
     
     def __str__(self):
         return f"{self.contract.title} - {self.action} at {self.timestamp}"
+
+
+class ContractApproval(models.Model):
+    """
+    Contract approval workflow tracking for multi-user approvals
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contract = models.ForeignKey(
+        Contract,
+        on_delete=models.CASCADE,
+        related_name='approvals',
+        help_text='Contract requiring approval'
+    )
+    version_number = models.IntegerField(help_text='Contract version being approved')
+    approver = models.UUIDField(help_text='User ID who needs to approve')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        help_text='Approval status'
+    )
+    sequence = models.IntegerField(default=0, help_text='Order in approval chain (0 = parallel)')
+    is_required = models.BooleanField(default=True, help_text='Is this approval mandatory?')
+    requested_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True, help_text='When approver responded')
+    comments = models.TextField(blank=True, null=True, help_text='Approver comments')
+    
+    class Meta:
+        db_table = 'contract_approvals'
+        ordering = ['sequence', 'requested_at']
+        indexes = [
+            models.Index(fields=['contract', 'status']),
+            models.Index(fields=['approver', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.contract.title} - Approval by {self.approver} ({self.status})"
+
+
+class ContractEditHistory(models.Model):
+    """
+    Detailed edit history tracking changes to contracts
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contract = models.ForeignKey(
+        Contract,
+        on_delete=models.CASCADE,
+        related_name='edit_history',
+        help_text='Contract that was edited'
+    )
+    edited_by = models.UUIDField(help_text='User ID who made the edit')
+    edited_at = models.DateTimeField(auto_now_add=True)
+    changes = models.JSONField(help_text='JSON describing changes: {"field": "title", "old_value": "Old Title", "new_value": "New Title"}')
+    change_summary = models.TextField(blank=True, null=True, help_text='Human-readable summary of changes')
+    version_before = models.IntegerField(help_text='Version number before edit')
+    version_after = models.IntegerField(help_text='Version number after edit')
+    
+    class Meta:
+        db_table = 'contract_edit_history'
+        ordering = ['-edited_at']
+        indexes = [
+            models.Index(fields=['contract', 'edited_at']),
+            models.Index(fields=['edited_by']),
+        ]
+    
+    def __str__(self):
+        return f"{self.contract.title} edited by {self.edited_by} at {self.edited_at}"

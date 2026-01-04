@@ -1,0 +1,479 @@
+[
+  {
+    "timestamp": "2026-01-04T08:53:42.667949",
+    "description": "Register User 1 (Admin)",
+    "status_code": 201,
+    "elapsed_seconds": 10.528525,
+    "response": {
+      "message": "User created successfully",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3NTgzNDIyLCJpYXQiOjE3Njc0OTcwMjIsImp0aSI6IjZlOTYzNzUzNzNlMjQyMjNhYjQ1MDFlMzZhNGQzZjQ1IiwidXNlcl9pZCI6ImRmY2FlODIxLTExYTQtNDE5Ni05MTk5LTVhZjQwY2JkN2FiNyJ9.Risk3N49QIBsKT5az1jBFzWY0fhcOkKnOcqPBb3YmqY",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODEwMTgyMiwiaWF0IjoxNzY3NDk3MDIyLCJqdGkiOiIxMjIxMmNhNDFhMzM0YjdmYTAxYTBkYjM5MzZhYjdjZSIsInVzZXJfaWQiOiJkZmNhZTgyMS0xMWE0LTQxOTYtOTE5OS01YWY0MGNiZDdhYjcifQ.tdw2cMQVzdApuq0V2Sa99iDrxG4bllh7z-gmsKJ1qy4",
+      "user": {
+        "user_id": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+        "email": "admin_a328c9f2@test.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:53:44.877385",
+    "description": "Register User 2 (Approver)",
+    "status_code": 201,
+    "elapsed_seconds": 2.206437,
+    "response": {
+      "message": "User created successfully",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3NTgzNDI0LCJpYXQiOjE3Njc0OTcwMjQsImp0aSI6IjMzN2I0YTNjZTI2MzQ1YzE4Y2Y3NjcyODc1Y2ZmMjQ1IiwidXNlcl9pZCI6ImJjYTY0MjMzLTM5ODEtNDY3NC04MDdjLThlYTA1NzA4NDMzYSJ9.VBlre2uOuzKPH7-gYwpATWKK16LxnsWWSUXUsb-AvZk",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODEwMTgyNCwiaWF0IjoxNzY3NDk3MDI0LCJqdGkiOiIyNzQ5MGUzZTgwM2Y0YWYxOGE1MWMzMGM2NjlhY2FjZCIsInVzZXJfaWQiOiJiY2E2NDIzMy0zOTgxLTQ2NzQtODA3Yy04ZWEwNTcwODQzM2EifQ.l_LyLGjdb2LRZRnlhe7saPEpVlIlVJBGCBfpDEMQ8E0",
+      "user": {
+        "user_id": "bca64233-3981-4674-807c-8ea05708433a",
+        "email": "approver_0dde438d@test.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "253220cf-fb14-44e0-94cb-ffdefcc9b909",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:53:46.793451",
+    "description": "Login User 1",
+    "status_code": 200,
+    "elapsed_seconds": 1.914869,
+    "response": {
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3NTgzNDI2LCJpYXQiOjE3Njc0OTcwMjYsImp0aSI6IjU5ZmIyOWE1OTE3MDQxZTE4NTM2ODc1Yzk1MTYxMzdiIiwidXNlcl9pZCI6ImRmY2FlODIxLTExYTQtNDE5Ni05MTk5LTVhZjQwY2JkN2FiNyJ9.WqorrAdkQcNvEWSxJEMwKoBzry2pj6Ur9RZMeIa7E-c",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODEwMTgyNiwiaWF0IjoxNzY3NDk3MDI2LCJqdGkiOiIwNjk0MDc4MGVlNmM0ODA4OWQ0MDAxZTJlNTY2MTVjYSIsInVzZXJfaWQiOiJkZmNhZTgyMS0xMWE0LTQxOTYtOTE5OS01YWY0MGNiZDdhYjcifQ.12Gm4LnJ_nP96dO_-S6CFM3PmoST0akcjCW22mGDIsE",
+      "user": {
+        "user_id": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+        "email": "admin_a328c9f2@test.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:53:49.059382",
+    "description": "Login User 2",
+    "status_code": 200,
+    "elapsed_seconds": 2.265003,
+    "response": {
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3NTgzNDI5LCJpYXQiOjE3Njc0OTcwMjksImp0aSI6ImE0NGQ3NTY2NTI1YzRlMzViYTU1NzhjMzAzMDRmMmVkIiwidXNlcl9pZCI6ImJjYTY0MjMzLTM5ODEtNDY3NC04MDdjLThlYTA1NzA4NDMzYSJ9.KaKmjJD4NbqkX_9lzH-tuTAvKZYA3JYH-v9TjlNE3jk",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODEwMTgyOSwiaWF0IjoxNzY3NDk3MDI5LCJqdGkiOiJiNTY2ZWE5ZWVmNjI0NDdiYjUyOTg1NTBmOTQ4Zjg2MCIsInVzZXJfaWQiOiJiY2E2NDIzMy0zOTgxLTQ2NzQtODA3Yy04ZWEwNTcwODQzM2EifQ.M1CBgP-qnqByws09_u92bBFF0kE8L137tmmmFcTCNCM",
+      "user": {
+        "user_id": "bca64233-3981-4674-807c-8ea05708433a",
+        "email": "approver_0dde438d@test.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "253220cf-fb14-44e0-94cb-ffdefcc9b909",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:10.528718",
+    "description": "Create contract with approval workflow",
+    "status_code": 201,
+    "elapsed_seconds": 6.287378,
+    "response": {
+      "id": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+      "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+      "title": "Sales Agreement - Approval Test",
+      "contract_type": "MSA",
+      "status": "pending",
+      "value": "50000.00",
+      "counterparty": "Acme Corp",
+      "start_date": null,
+      "end_date": null,
+      "is_approved": false,
+      "approved_by": null,
+      "approved_at": null,
+      "created_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "last_edited_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "last_edited_at": "2026-01-04T03:24:08.131944Z",
+      "approval_required": true,
+      "current_approvers": [
+        "bca64233-3981-4674-807c-8ea05708433a"
+      ],
+      "approval_chain": [],
+      "document_r2_key": "fb0442fa-3076-4be9-9a94-0f836b104842/contracts/c7e9f99a-2819-4297-a82c-3c92105f2554.txt",
+      "created_at": "2026-01-04T03:24:08.150435Z",
+      "updated_at": "2026-01-04T03:24:08.879019Z",
+      "latest_version": null,
+      "pending_approvals": [
+        {
+          "id": "09665bff-a538-44b1-a787-0f3ae59fb130",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "version_number": 1,
+          "approver": "bca64233-3981-4674-807c-8ea05708433a",
+          "approver_email": "user_bca64233-3981-4674-807c-8ea05708433a@example.com",
+          "status": "pending",
+          "sequence": 1,
+          "is_required": true,
+          "requested_at": "2026-01-04T03:24:08.661378Z",
+          "responded_at": null,
+          "comments": null
+        }
+      ],
+      "edit_history": [],
+      "workflow_logs": [
+        {
+          "id": "9b6e4c84-e3fb-40e0-a87b-8f716af61e5b",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "action": "created",
+          "performed_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "performer_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+          "comment": "Contract created via admin dashboard",
+          "timestamp": "2026-01-04T03:24:09.086107Z",
+          "metadata": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:13.965009",
+    "description": "Get pending approvals",
+    "status_code": 200,
+    "elapsed_seconds": 3.434374,
+    "response": {
+      "count": 1,
+      "results": [
+        {
+          "id": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+          "title": "Sales Agreement - Approval Test",
+          "contract_type": "MSA",
+          "status": "pending",
+          "value": "50000.00",
+          "counterparty": "Acme Corp",
+          "start_date": null,
+          "end_date": null,
+          "is_approved": false,
+          "approved_by": null,
+          "approved_at": null,
+          "created_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "last_edited_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "last_edited_at": "2026-01-04T03:24:08.131944Z",
+          "approval_required": true,
+          "current_approvers": [
+            "bca64233-3981-4674-807c-8ea05708433a"
+          ],
+          "approval_chain": [],
+          "document_r2_key": "fb0442fa-3076-4be9-9a94-0f836b104842/contracts/c7e9f99a-2819-4297-a82c-3c92105f2554.txt",
+          "created_at": "2026-01-04T03:24:08.150435Z",
+          "updated_at": "2026-01-04T03:24:08.879019Z",
+          "latest_version": null,
+          "pending_approvals": [
+            {
+              "id": "09665bff-a538-44b1-a787-0f3ae59fb130",
+              "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+              "version_number": 1,
+              "approver": "bca64233-3981-4674-807c-8ea05708433a",
+              "approver_email": "user_bca64233-3981-4674-807c-8ea05708433a@example.com",
+              "status": "pending",
+              "sequence": 1,
+              "is_required": true,
+              "requested_at": "2026-01-04T03:24:08.661378Z",
+              "responded_at": null,
+              "comments": null
+            }
+          ],
+          "edit_history": [],
+          "workflow_logs": [
+            {
+              "id": "9b6e4c84-e3fb-40e0-a87b-8f716af61e5b",
+              "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+              "action": "created",
+              "performed_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+              "performer_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+              "comment": "Contract created via admin dashboard",
+              "timestamp": "2026-01-04T03:24:09.086107Z",
+              "metadata": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:17.649579",
+    "description": "Get dashboard stats",
+    "status_code": 200,
+    "elapsed_seconds": 3.66621,
+    "response": {
+      "total_contracts": 1,
+      "by_status": {
+        "draft": 0,
+        "pending": 1,
+        "approved": 0,
+        "rejected": 0,
+        "executed": 0
+      },
+      "pending_my_approval": 0,
+      "recently_created": [
+        {
+          "id": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "title": "Sales Agreement - Approval Test",
+          "status": "pending",
+          "created_at": "2026-01-04T03:24:08.150435Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:21.795474",
+    "description": "Approve contract",
+    "status_code": 200,
+    "elapsed_seconds": 4.134927,
+    "response": {
+      "message": "Contract approved successfully",
+      "contract_status": "approved",
+      "approval_status": "approved"
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:24.983753",
+    "description": "Get contract detail with workflow",
+    "status_code": 200,
+    "elapsed_seconds": 3.180687,
+    "response": {
+      "id": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+      "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+      "title": "Sales Agreement - Approval Test",
+      "contract_type": "MSA",
+      "status": "approved",
+      "value": "50000.00",
+      "counterparty": "Acme Corp",
+      "start_date": null,
+      "end_date": null,
+      "is_approved": true,
+      "approved_by": "bca64233-3981-4674-807c-8ea05708433a",
+      "approved_at": "2026-01-04T03:24:20.887242Z",
+      "created_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "last_edited_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "last_edited_at": "2026-01-04T03:24:08.131944Z",
+      "approval_required": true,
+      "current_approvers": [
+        "bca64233-3981-4674-807c-8ea05708433a"
+      ],
+      "approval_chain": [],
+      "document_r2_key": "fb0442fa-3076-4be9-9a94-0f836b104842/contracts/c7e9f99a-2819-4297-a82c-3c92105f2554.txt",
+      "created_at": "2026-01-04T03:24:08.150435Z",
+      "updated_at": "2026-01-04T03:24:20.889823Z",
+      "latest_version": null,
+      "pending_approvals": [],
+      "edit_history": [],
+      "workflow_logs": [
+        {
+          "id": "be445590-d1a6-44c7-b5d4-f75b24619966",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "action": "approved",
+          "performed_by": "bca64233-3981-4674-807c-8ea05708433a",
+          "performer_email": "user_bca64233-3981-4674-807c-8ea05708433a@example.com",
+          "comment": "All approvals completed",
+          "timestamp": "2026-01-04T03:24:21.121667Z",
+          "metadata": null
+        },
+        {
+          "id": "9b6e4c84-e3fb-40e0-a87b-8f716af61e5b",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "action": "created",
+          "performed_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "performer_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+          "comment": "Contract created via admin dashboard",
+          "timestamp": "2026-01-04T03:24:09.086107Z",
+          "metadata": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:36.988393",
+    "description": "Update contract",
+    "status_code": 200,
+    "elapsed_seconds": 11.987851,
+    "response": {
+      "id": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+      "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+      "title": "Sales Agreement - Updated Title",
+      "contract_type": "MSA",
+      "status": "approved",
+      "value": "75000.00",
+      "counterparty": "Acme Corp",
+      "start_date": null,
+      "end_date": null,
+      "created_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "created_at": "2026-01-04T03:24:08.150435Z",
+      "updated_at": "2026-01-04T03:24:35.515985Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:45.990771",
+    "description": "Get contract history",
+    "status_code": 200,
+    "elapsed_seconds": 8.996599,
+    "response": {
+      "contract_id": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+      "title": "Sales Agreement - Updated Title",
+      "current_status": "approved",
+      "edit_history": [
+        {
+          "id": "64a7d3e3-0f9c-43aa-b21f-879b6780a6fb",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "edited_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "editor_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+          "edited_at": "2026-01-04T03:24:35.935454Z",
+          "changes": [
+            {
+              "field": "title",
+              "new_value": "Sales Agreement - Updated Title",
+              "old_value": "Sales Agreement - Approval Test"
+            },
+            {
+              "field": "value",
+              "new_value": "75000.00",
+              "old_value": "50000.00"
+            }
+          ],
+          "change_summary": "Updated 2 field(s)",
+          "version_before": 1,
+          "version_after": 1
+        }
+      ],
+      "workflow_logs": [
+        {
+          "id": "5e45bb59-460a-4ba4-9be9-39321220a3b9",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "action": "clause_updated",
+          "performed_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "performer_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+          "comment": "Contract updated via admin dashboard",
+          "timestamp": "2026-01-04T03:24:36.526889Z",
+          "metadata": {
+            "changes": [
+              {
+                "field": "title",
+                "new_value": "Sales Agreement - Updated Title",
+                "old_value": "Sales Agreement - Approval Test"
+              },
+              {
+                "field": "value",
+                "new_value": "75000.00",
+                "old_value": "50000.00"
+              }
+            ]
+          }
+        },
+        {
+          "id": "be445590-d1a6-44c7-b5d4-f75b24619966",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "action": "approved",
+          "performed_by": "bca64233-3981-4674-807c-8ea05708433a",
+          "performer_email": "user_bca64233-3981-4674-807c-8ea05708433a@example.com",
+          "comment": "All approvals completed",
+          "timestamp": "2026-01-04T03:24:21.121667Z",
+          "metadata": null
+        },
+        {
+          "id": "9b6e4c84-e3fb-40e0-a87b-8f716af61e5b",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "action": "created",
+          "performed_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "performer_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+          "comment": "Contract created via admin dashboard",
+          "timestamp": "2026-01-04T03:24:09.086107Z",
+          "metadata": null
+        }
+      ],
+      "approvals": [
+        {
+          "id": "09665bff-a538-44b1-a787-0f3ae59fb130",
+          "contract": "5dab9925-513d-4c6a-a6f7-ebfb7620796f",
+          "version_number": 1,
+          "approver": "bca64233-3981-4674-807c-8ea05708433a",
+          "approver_email": "user_bca64233-3981-4674-807c-8ea05708433a@example.com",
+          "status": "approved",
+          "sequence": 1,
+          "is_required": true,
+          "requested_at": "2026-01-04T03:24:08.661378Z",
+          "responded_at": "2026-01-04T03:24:20.121880Z",
+          "comments": "Looks good!"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:51.455564",
+    "description": "Create contract for rejection",
+    "status_code": 201,
+    "elapsed_seconds": 5.460478,
+    "response": {
+      "id": "ad9fae02-bdc4-403b-a242-2ad91150946e",
+      "tenant_id": "fb0442fa-3076-4be9-9a94-0f836b104842",
+      "title": "Contract for Rejection Test",
+      "contract_type": "NDA",
+      "status": "pending",
+      "value": null,
+      "counterparty": "",
+      "start_date": null,
+      "end_date": null,
+      "is_approved": false,
+      "approved_by": null,
+      "approved_at": null,
+      "created_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "last_edited_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+      "last_edited_at": "2026-01-04T03:24:48.887378Z",
+      "approval_required": true,
+      "current_approvers": [
+        "bca64233-3981-4674-807c-8ea05708433a"
+      ],
+      "approval_chain": [],
+      "document_r2_key": "fb0442fa-3076-4be9-9a94-0f836b104842/contracts/a7b08803-af53-4e73-818e-9ed5f9047321.txt",
+      "created_at": "2026-01-04T03:24:48.888666Z",
+      "updated_at": "2026-01-04T03:24:49.560661Z",
+      "latest_version": null,
+      "pending_approvals": [
+        {
+          "id": "d37ee67e-5dba-44b5-b753-7919bb177a3a",
+          "contract": "ad9fae02-bdc4-403b-a242-2ad91150946e",
+          "version_number": 1,
+          "approver": "bca64233-3981-4674-807c-8ea05708433a",
+          "approver_email": "user_bca64233-3981-4674-807c-8ea05708433a@example.com",
+          "status": "pending",
+          "sequence": 1,
+          "is_required": true,
+          "requested_at": "2026-01-04T03:24:49.340235Z",
+          "responded_at": null,
+          "comments": null
+        }
+      ],
+      "edit_history": [],
+      "workflow_logs": [
+        {
+          "id": "f21e027c-7340-49f2-88f0-f2f434cade31",
+          "contract": "ad9fae02-bdc4-403b-a242-2ad91150946e",
+          "action": "created",
+          "performed_by": "dfcae821-11a4-4196-9199-5af40cbd7ab7",
+          "performer_email": "user_dfcae821-11a4-4196-9199-5af40cbd7ab7@example.com",
+          "comment": "Contract created via admin dashboard",
+          "timestamp": "2026-01-04T03:24:49.843924Z",
+          "metadata": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-04T08:54:55.690406",
+    "description": "Reject contract",
+    "status_code": 200,
+    "elapsed_seconds": 4.225192,
+    "response": {
+      "message": "Contract rejectd successfully",
+      "contract_status": "rejected",
+      "approval_status": "rejected"
+    }
+  }
+]

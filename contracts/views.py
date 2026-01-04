@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.utils import timezone
 
 from .models import Contract, WorkflowLog
 from .serializers import (
@@ -59,15 +60,17 @@ class ContractListCreateView(APIView):
         try:
             # Upload file to R2
             r2_service = R2StorageService()
-            r2_key = r2_service.upload_file(file, request.user.tenant_id, file.name)
+            document_r2_key = r2_service.upload_file(file, request.user.tenant_id, file.name)
             
             # Create contract record
             contract = Contract.objects.create(
                 tenant_id=request.user.tenant_id,
                 title=title,
-                r2_key=r2_key,
+                document_r2_key=document_r2_key,
                 status=contract_status,
                 created_by=request.user.user_id,
+                last_edited_by=request.user.user_id,
+                last_edited_at=timezone.now(),
                 counterparty=counterparty,
                 contract_type=contract_type
             )
@@ -131,7 +134,7 @@ class ContractDetailView(APIView):
         # Generate presigned URL for secure download
         try:
             r2_service = R2StorageService()
-            download_url = r2_service.generate_presigned_url(contract.r2_key)
+            download_url = r2_service.generate_presigned_url(contract.document_r2_key) if contract.document_r2_key else None
             
             serializer = ContractDetailSerializer(contract)
             data = serializer.data
@@ -297,7 +300,8 @@ class ContractDeleteView(APIView):
                 
                 # Delete from R2
                 r2_service = R2StorageService()
-                r2_service.delete_file(contract.r2_key)
+                if contract.document_r2_key:
+                    r2_service.delete_file(contract.document_r2_key)
                 
                 # Delete from database
                 contract.delete()
