@@ -6,6 +6,7 @@ Contract generation and management views with Part A features:
 - Business rule validation
 - Mandatory clause enforcement
 """
+import logging
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,6 +14,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+
+logger = logging.getLogger(__name__)
 import uuid
 import hashlib
 
@@ -28,6 +31,9 @@ from .serializers import (
 )
 from .services import ContractGenerator, RuleEngine
 from authentication.r2_service import R2StorageService
+from .workflow_services import WorkflowEngine, AuditLogService, NotificationService
+from .workflow_engine import WorkflowMatchEngine, WorkflowOrchestrator
+from .workflow_serializers import WorkflowStartSerializer, ContractApproveSerializer as WorkflowApproveSerializer
 
 
 class ContractTemplateViewSet(viewsets.ReadOnlyModelViewSet):
@@ -148,11 +154,45 @@ class ContractViewSet(viewsets.ModelViewSet):
         return Contract.objects.filter(tenant_id=tenant_id)
     
     def perform_create(self, serializer):
-        """Set tenant_id and created_by when creating a contract"""
-        serializer.save(
+        """
+        Set tenant_id and created_by when creating a contract
+        
+        Production-Level Feature:
+        Auto-starts workflow if contract matches any active workflow rules
+        Uses the WorkflowMatchEngine to dynamically evaluate trigger conditions
+        """
+        # 1. Save the contract
+        contract = serializer.save(
             tenant_id=self.request.user.tenant_id,
             created_by=self.request.user.user_id
         )
+        
+        # 2. Auto-match and start workflow if applicable
+        try:
+            workflow = WorkflowMatchEngine.find_matching_workflow(contract)
+            
+            if workflow:
+                # Start workflow (this will trigger signals for notifications)
+                WorkflowOrchestrator.start_workflow(
+                    contract=contract,
+                    workflow_definition=workflow,
+                    initiated_by=self.request.user.user_id,
+                    metadata={
+                        'auto_started': True,
+                        'matched_rules': workflow.trigger_conditions
+                    }
+                )
+                
+                logger.info(
+                    f"Auto-started workflow '{workflow.name}' "
+                    f"for contract {contract.id}"
+                )
+        except Exception as e:
+            # Log but don't crash contract creation
+            logger.error(
+                f"Failed to auto-start workflow for contract {contract.id}: {e}",
+                exc_info=True
+            )
 
     def create(self, request, *args, **kwargs):
         """Create contract.
@@ -596,17 +636,407 @@ class ContractViewSet(viewsets.ModelViewSet):
             'mandatory_clauses': mandatory
         })
     
-    @action(detail=True, methods=['post'], url_path='approve')
-    def approve(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='workflow/start')
+    def start_workflow(self, request, pk=None):
         """
-        POST /contracts/{id}/approve
-        Approve a contract for download/send/sign
+        POST /contracts/{id}/workflow/start/
+        Start approval workflow for a contract
+        
+        Uses Production-Level WorkflowOrchestrator:
+        - Dynamic rule matching via kwargs unpacking
+        - Transaction-safe workflow creation
+        - Automatic notification triggering via signals
+        
+        Request:
+        {
+            "workflow_definition_id": "uuid"  // Optional, will auto-match if not provided
+        }
+        """
+        contract = self.get_object()
+        
+        if contract.status not in ['draft', 'rejected']:
+            return Response(
+                {'error': f'Cannot start workflow for contract in {contract.status} status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = WorkflowStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        workflow_id = serializer.validated_data.get('workflow_definition_id')
+        metadata = serializer.validated_data.get('metadata', {})
+        
+        try:
+            from .workflow_models import WorkflowDefinition
+            workflow_definition = None
+            
+            if workflow_id:
+                workflow_definition = WorkflowDefinition.objects.get(
+                    id=workflow_id,
+                    tenant_id=request.user.tenant_id,
+                    is_active=True
+                )
+            
+            # Use the production-level orchestrator
+            workflow_instance = WorkflowOrchestrator.start_workflow(
+                contract=contract,
+                workflow_definition=workflow_definition,
+                initiated_by=request.user.user_id,
+                metadata={**metadata, 'manual_start': True}
+            )
+            
+            from .workflow_serializers import WorkflowInstanceSerializer
+            return Response(
+                WorkflowInstanceSerializer(workflow_instance).data,
+                status=status.HTTP_201_CREATED
+            )
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error starting workflow: {e}", exc_info=True)
+            return Response(
+                {'error': 'Failed to start workflow'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['get'], url_path='workflow/status')
+    def workflow_status(self, request, pk=None):
+        """
+        GET /contracts/{id}/workflow/status/
+        Get current workflow status for a contract
+        
+        Response:
+        {
+            "contract_id": "uuid",
+            "status": "pending",
+            "current_stage": "Legal Review",
+            "workflow_name": "High Value Contract Approval",
+            "started_at": "2026-01-05T10:00:00Z",
+            "pending_approvers": [
+                {
+                    "approver_id": "uuid",
+                    "stage": "Legal Review",
+                    "due_at": "2026-01-07T10:00:00Z",
+                    "is_overdue": false
+                }
+            ]
+        }
+        """
+        contract = self.get_object()
+        
+        from .workflow_models import WorkflowInstance, WorkflowStageApproval
+        
+        try:
+            workflow = WorkflowInstance.objects.filter(
+                contract=contract,
+                status='active'
+            ).select_related('workflow_definition').first()
+            
+            if not workflow:
+                return Response({
+                    'contract_id': str(contract.id),
+                    'status': contract.status,
+                    'workflow_active': False,
+                    'message': 'No active workflow for this contract'
+                })
+            
+            # Get pending approvals
+            pending_approvals = WorkflowStageApproval.objects.filter(
+                workflow_instance=workflow,
+                status='pending'
+            ).order_by('stage_sequence', 'requested_at')
+            
+            pending_list = []
+            for approval in pending_approvals:
+                pending_list.append({
+                    'approval_id': str(approval.id),
+                    'approver_id': str(approval.approver),
+                    'stage': approval.stage_name,
+                    'requested_at': approval.requested_at,
+                    'due_at': approval.due_at,
+                    'is_overdue': approval.is_overdue()
+                })
+            
+            return Response({
+                'contract_id': str(contract.id),
+                'workflow_id': str(workflow.id),
+                'status': contract.status,
+                'workflow_active': True,
+                'workflow_name': workflow.workflow_definition.name,
+                'current_stage': workflow.current_stage_name,
+                'started_at': workflow.started_at,
+                'pending_approvers': pending_list
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='approve')
+    def workflow_approve(self, request, pk=None):
+        """
+        POST /contracts/{id}/approve/
+        Approve or reject contract in workflow
+        
+        Uses Production-Level WorkflowOrchestrator:
+        - State machine validation
+        - Automatic workflow advancement
+        - Event-driven notifications via signals
+        
+        Request:
+        {
+            "action": "approve",  // or "reject" or "delegate"
+            "comments": "Approved with minor concerns",
+            "delegate_to": "uuid"  // Required if action is "delegate"
+        }
+        """
+        contract = self.get_object()
+        
+        serializer = WorkflowApproveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        action = serializer.validated_data['action']
+        comments = serializer.validated_data.get('comments', '')
+        delegate_to = serializer.validated_data.get('delegate_to')
+        
+        from .workflow_models import WorkflowStageApproval
+        
+        # Find pending approval for this user
+        approval = WorkflowStageApproval.objects.filter(
+            workflow_instance__contract=contract,
+            approver=request.user.user_id,
+            status='pending'
+        ).select_related('workflow_instance').first()
+        
+        if not approval:
+            return Response(
+                {'error': 'No pending approval found for you on this contract'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            # Use the production-level orchestrator
+            workflow_instance = WorkflowOrchestrator.process_approval(
+                approval=approval,
+                action=action,
+                user_id=request.user.user_id,
+                comments=comments,
+                delegate_to=delegate_to
+            )
+            
+            # Refresh contract to get updated status
+            contract.refresh_from_db()
+            
+            from .workflow_serializers import WorkflowInstanceSerializer
+            return Response({
+                'message': f'Contract {action}d successfully',
+                'workflow': WorkflowInstanceSerializer(workflow_instance).data,
+                'contract_status': contract.status
+            }, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error processing approval: {e}", exc_info=True)
+            return Response(
+                {'error': 'Failed to process approval'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'], url_path='reject')
+    def workflow_reject(self, request, pk=None):
+        """
+        POST /contracts/{id}/reject/
+        Reject contract (shortcut for approve with action=reject)
+        """
+        request.data['action'] = 'reject'
+        return self.workflow_approve(request, pk)
+    
+    @action(detail=True, methods=['post'], url_path='delegate')
+    def workflow_delegate(self, request, pk=None):
+        """
+        POST /contracts/{id}/delegate/
+        Delegate approval to another user
+        
+        Request:
+        {
+            "delegate_to": "uuid",
+            "comments": "Delegating to team lead"
+        }
+        """
+        request.data['action'] = 'delegate'
+        return self.workflow_approve(request, pk)
+    
+    @action(detail=True, methods=['get'], url_path='audit')
+    def audit_trail(self, request, pk=None):
+        """
+        GET /contracts/{id}/audit/
+        Get full audit trail for a contract
+        
+        Response: List of all actions performed on the contract with timestamps
+        """
+        contract = self.get_object()
+        
+        from .workflow_models import AuditLog
+        
+        logs = AuditLog.objects.filter(
+            contract=contract
+        ).order_by('-timestamp')
+        
+        from .workflow_serializers import AuditLogSerializer
+        serializer = AuditLogSerializer(logs, many=True)
+        
+        return Response({
+            'contract_id': str(contract.id),
+            'contract_title': contract.title,
+            'total_events': logs.count(),
+            'audit_trail': serializer.data
+        })
+    
+    @action(detail=False, methods=['post'], url_path='validate-clauses')
+    def validate_clauses(self, request):
+        """
+        POST /contracts/validate-clauses/
+        Validate clause selection against business rules
+        
+        Request:
+        {
+            "clauses": ["CONF-001", "TERM-001"],
+            "context": {
+                "contract_type": "MSA",
+                "contract_value": 5000000
+            }
+        }
+        
+        Response:
+        {
+            "is_valid": true,
+            "errors": [],
+            "warnings": [],
+            "mandatory_clauses": [
+                {
+                    "clause_id": "LIAB-001",
+                    "message": "Liability clause required for high-value contracts"
+                }
+            ]
+        }
+        """
+        clauses = request.data.get('clauses', [])
+        context = request.data.get('context', {})
+        
+        tenant_id = request.user.tenant_id
+        contract_type = context.get('contract_type', 'General')
+        
+        rule_engine = RuleEngine()
+        
+        # Get mandatory clauses
+        mandatory_clauses = rule_engine.get_mandatory_clauses(
+            tenant_id, contract_type, context
+        )
+        
+        # Check for missing mandatory clauses
+        mandatory_ids = [m['clause_id'] for m in mandatory_clauses]
+        missing_mandatory = [mid for mid in mandatory_ids if mid not in clauses]
+        
+        errors = []
+        warnings = []
+        
+        if missing_mandatory:
+            for clause_id in missing_mandatory:
+                clause_info = next((m for m in mandatory_clauses if m['clause_id'] == clause_id), None)
+                if clause_info:
+                    errors.append({
+                        'type': 'missing_mandatory_clause',
+                        'clause_id': clause_id,
+                        'message': clause_info.get('message', f'Clause {clause_id} is mandatory')
+                    })
+        
+        return Response({
+            'is_valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings,
+            'mandatory_clauses': mandatory_clauses
+        })
+    
+    @action(detail=True, methods=['post'], url_path='apply-template')
+    def apply_template(self, request, pk=None):
+        """
+        POST /contracts/{id}/apply-template/
+        Apply a template to an existing contract
+        
+        Request:
+        {
+            "template_id": "uuid"
+        }
+        """
+        contract = self.get_object()
+        template_id = request.data.get('template_id')
+        
+        if not template_id:
+            return Response(
+                {'error': 'template_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            template = ContractTemplate.objects.get(
+                id=template_id,
+                tenant_id=request.user.tenant_id,
+                status='published'
+            )
+            
+            contract.template = template
+            contract.contract_type = template.contract_type
+            contract.save(update_fields=['template', 'contract_type', 'updated_at'])
+            
+            # Log audit event
+            AuditLogService.log(
+                tenant_id=request.user.tenant_id,
+                user_id=request.user.user_id,
+                action='contract_updated',
+                resource_type='contract',
+                resource_id=contract.id,
+                contract=contract,
+                metadata={'action': 'template_applied', 'template_id': str(template_id)}
+            )
+            
+            return Response(
+                ContractDetailSerializer(contract).data,
+                status=status.HTTP_200_OK
+            )
+        except ContractTemplate.DoesNotExist:
+            return Response(
+                {'error': 'Template not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'], url_path='approve-old')
+    def approve_old(self, request, pk=None):
+        """
+        POST /contracts/{id}/approve-old
+        Approve a contract for download/send/sign (legacy endpoint)
         """
         contract = self.get_object()
         serializer = ContractApproveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        if not serializer.validated_data['reviewed']:
+        # Auto-set reviewed to True if not provided
+        reviewed = serializer.validated_data.get('reviewed', True)
+        
+        if not reviewed:
             return Response(
                 {'error': 'You must review the contract before approving'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -704,6 +1134,83 @@ class ContractViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': 'Failed to create new version', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], url_path='related')
+    def related_contracts(self, request, pk=None):
+        """
+        Find semantically related contracts
+        
+        URL: GET /api/contracts/{id}/related/
+        
+        Query Params:
+        - limit: Max results (default 5)
+        
+        Response:
+        {
+            "related": [
+                {
+                    "id": "uuid",
+                    "title": "...",
+                    "similarity_score": 0.92,
+                    "contract": {...}
+                }
+            ]
+        }
+        """
+        from .search_services import hybrid_search_service
+        from .serializers import ContractSerializer
+        
+        tenant_id = str(request.user.tenant_id)
+        limit = int(request.query_params.get('limit', 5))
+        
+        try:
+            contract = self.get_object()
+            
+            # Check if this contract has an embedding yet
+            if not contract.metadata or not contract.metadata.get('embedding'):
+                return Response(
+                    {
+                        'message': 'This contract is still processing its embedding.',
+                        'status': 'processing',
+                        'related': []
+                    },
+                    status=status.HTTP_202_ACCEPTED
+                )
+            
+            # Find similar contracts
+            similar = hybrid_search_service.find_similar_contracts(
+                contract_id=str(contract.id),
+                tenant_id=tenant_id,
+                limit=limit
+            )
+            
+            # Enrich with full data
+            enriched = []
+            for item in similar:
+                try:
+                    related_contract = Contract.objects.get(id=item['id'], tenant_id=tenant_id)
+                    enriched.append({
+                        'id': item['id'],
+                        'similarity_score': item.get('similarity_score', 0),
+                        'contract': ContractSerializer(related_contract).data
+                    })
+                except Contract.DoesNotExist:
+                    continue
+            
+            return Response({
+                'source_contract': {
+                    'id': str(contract.id),
+                    'title': contract.title
+                },
+                'related': enriched
+            })
+            
+        except Exception as e:
+            logger.error(f"Related contracts search failed: {e}", exc_info=True)
+            return Response(
+                {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

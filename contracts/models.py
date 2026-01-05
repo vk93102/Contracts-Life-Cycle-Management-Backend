@@ -110,6 +110,7 @@ class Contract(models.Model):
         help_text='Source template used to generate this contract'
     )
     title = models.CharField(max_length=255, help_text='Contract title')
+    description = models.TextField(blank=True, null=True, help_text='Contract description')
     current_version = models.IntegerField(default=1, help_text='Current version number')
     status = models.CharField(
         max_length=20,
@@ -129,6 +130,7 @@ class Contract(models.Model):
     start_date = models.DateField(blank=True, null=True, help_text='Contract start date')
     end_date = models.DateField(blank=True, null=True, help_text='Contract end date')
     form_inputs = models.JSONField(default=dict, help_text='Structured intake form inputs')
+    metadata = models.JSONField(default=dict, help_text='AI metadata (embeddings, generation status, etc.)')
     user_instructions = models.TextField(blank=True, null=True, help_text='Optional user instructions')
     
     # Workflow fields

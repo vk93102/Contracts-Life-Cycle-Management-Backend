@@ -2,23 +2,8 @@ services:
   - type: web
     name: clm-backend
     runtime: python3
-    buildCommand: |
-      python --version &&
-      pip install --upgrade pip setuptools wheel &&
-      pip install --upgrade pip &&
-      pip install setuptools>=65.0.0 wheel>=0.37.0 &&
-      pip install -r requirements.txt --no-cache-dir &&
-      python -c "import gunicorn; print('Gunicorn version:', gunicorn.__version__)"
-    startCommand: |
-      if [ -f "/opt/render/project/src/.venv/bin/python" ]; then
-        /opt/render/project/src/.venv/bin/python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
-      elif [ -f "/opt/render/project/.venv/bin/python" ]; then
-        /opt/render/project/.venv/bin/python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
-      elif [ -f "/opt/render/.venv/bin/python" ]; then
-        /opt/render/.venv/bin/python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
-      else
-        python -m gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30
-      fi
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn clm_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile -
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: clm_backend.settings

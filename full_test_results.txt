@@ -1,0 +1,103 @@
+
+[1m================================================================================
+AI Endpoints Comprehensive Test Suite
+================================================================================[0m
+
+
+[95m================================================================================[0m
+[1mTesting: Authentication[0m
+[95m================================================================================[0m
+[92m✅ Logged in as admin@example.com[0m
+
+[95m================================================================================[0m
+[1mTesting: Hybrid Search (Keyword + Semantic + RRF)[0m
+[95m================================================================================[0m
+[96mℹ️  Testing hybrid search for: 'employment agreement'[0m
+[92m✅ Hybrid search returned 5 results[0m
+[96mℹ️  Top result: Employment Agreement - Senior Software Engineer (score: 0.03)[0m
+[96mℹ️  Testing keyword search for: 'service agreement'[0m
+[92m✅ Keyword search returned 3 results[0m
+[96mℹ️  Top result: AI Test Service Agreement (score: 1.00)[0m
+[96mℹ️  Testing semantic search for: 'contract for software development'[0m
+[92m✅ Semantic search returned 5 results[0m
+[96mℹ️  Top result: Software Development Master Service Agreement (score: 0.74)[0m
+
+[95m================================================================================[0m
+[1mTesting: Search Autocomplete Suggestions[0m
+[95m================================================================================[0m
+[92m✅ Received 2 suggestions[0m
+[96mℹ️  1. Employment[0m
+[96mℹ️  2. Employment Agreement - Senior Software Engineer[0m
+
+[95m================================================================================[0m
+[1mTesting: Async Contract Generation (Chain-of-Thought + PII Redaction)[0m
+[95m================================================================================[0m
+[96mℹ️  Starting async contract generation...[0m
+[96mℹ️  Variables: {
+  "party_a": "Acme Corporation",
+  "party_b": "Client Industries Inc.",
+  "party_a_email": "legal@acme.com",
+  "party_b_email": "contracts@client.com",
+  "term": "24 months",
+  "payment_terms": "Net 30 days",
+  "total_value": "$150,000 USD",
+  "services": "Software development and maintenance"
+}[0m
+[92m✅ Generation started![0m
+[96mℹ️  Task ID: None[0m
+[96mℹ️  Contract ID: 6706d58b-74fc-44ad-9203-bee428814527[0m
+[96mℹ️  Waiting for generation to complete (this may take 30-60 seconds)...[0m
+  Status: queued (attempt 1/30)  Status: queued (attempt 2/30)  Status: queued (attempt 3/30)  Status: queued (attempt 4/30)  Status: queued (attempt 5/30)  Status: queued (attempt 6/30)  Status: queued (attempt 7/30)  Status: queued (attempt 8/30)  Status: queued (attempt 9/30)  Status: queued (attempt 10/30)  Status: queued (attempt 11/30)  Status: queued (attempt 12/30)  Status: queued (attempt 13/30)  Status: queued (attempt 14/30)  Status: queued (attempt 15/30)  Status: queued (attempt 16/30)  Status: queued (attempt 17/30)  Status: queued (attempt 18/30)  Status: queued (attempt 19/30)  Status: queued (attempt 20/30)  Status: queued (attempt 21/30)  Status: queued (attempt 22/30)  Status: queued (attempt 23/30)  Status: queued (attempt 24/30)  Status: queued (attempt 25/30)  Status: queued (attempt 26/30)  Status: queued (attempt 27/30)  Status: queued (attempt 28/30)  Status: queued (attempt 29/30)  Status: queued (attempt 30/30)[93m⚠️  Generation timeout (still processing)[0m
+
+[95m================================================================================[0m
+[1mTesting: AI Clause Summarization (Plain English)[0m
+[95m================================================================================[0m
+[96mℹ️  Original clause length: 561 characters[0m
+[92m✅ Clause summarized successfully![0m
+[96mℹ️  Plain-English Summary:
+Could not generate summary[0m
+
+[95m================================================================================[0m
+[1mTesting: Related Contracts (Semantic Similarity)[0m
+[95m================================================================================[0m
+[91m❌ Related contracts failed: 404[0m
+
+[95m================================================================================[0m
+[1mTesting: AI Contract Comparison (Diff Analysis)[0m
+[95m================================================================================[0m
+[96mℹ️  Comparing: AI Test Service Agreement vs Consulting Services Statement of Work[0m
+[92m✅ Contracts compared successfully![0m
+[96mℹ️  Summary: N/A...[0m
+
+[95m================================================================================[0m
+[1mTesting: OCR Document Processing[0m
+[95m================================================================================[0m
+[92m✅ OCR status: not_started[0m
+[92m✅ OCR reprocess triggered[0m
+
+[95m================================================================================[0m
+[1mTest Summary[0m
+[95m================================================================================[0m
+
+[92m✅ Authentication: PASS[0m
+[92m✅ Search (hybrid): PASS[0m
+[92m✅ Search (keyword): PASS[0m
+[92m✅ Search (semantic): PASS[0m
+[92m✅ Autocomplete: PASS[0m
+[93m⚠️  Async Generation: TIMEOUT[0m
+[92m✅ Clause Summary: PASS[0m
+[91m❌ Related Contracts: FAIL[0m
+[92m✅ Contract Comparison: PASS[0m
+[92m✅ OCR Status: PASS[0m
+[92m✅ OCR Reprocess: PASS[0m
+
+[1mResults:[0m
+  Total Tests: 11
+  [92mPassed: 9[0m
+  [91mFailed: 1[0m
+  [91mErrors: 0[0m
+  [93mSkipped/Info: 1[0m
+
+[91m❌ Some tests failed. Check logs above.[0m
+[95m================================================================================[0m
+

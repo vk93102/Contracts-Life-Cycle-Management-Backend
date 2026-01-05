@@ -1,0 +1,155 @@
+================================================================================
+                                 AUTHENTICATING                                 
+================================================================================
+Status: 200
+Response: {
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3Njk4Mzg4LCJpYXQiOjE3Njc2MTE5ODgsImp0aSI6IjRiMzljNmIyY2YxZjRkZjVhOTkzZGY4NDdmMmI1ZTQ3IiwidXNlcl9pZCI6IjZlNjBmNDNhLWQxNDEtNDkyMi05OWU5LTcxMWFmMjU4NWM4MiJ9.RRbEMx9jDe7Bi5vZzUMLRmENW9CTq3gC-JJkG1Eb6Pw",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODIxNjc4OCwiaWF0IjoxNzY3NjExOTg4LCJqdGkiOiJhOTJiNzIyNWY2OGE0YmQ0OTMyOGFmNjZmYzE5ZjgxMyIsInVzZXJfaWQiOiI2ZTYwZjQzYS1kMTQxLTQ5MjItOTllOS03MTFhZjI1ODVjODIifQ.R8KNR6vQFDKunln5VbRinqy-9dsYFu3QCfu9Xf8D4WU",
+  "user": {
+    "user_id": "6e60f43a-d141-4922-99e9-711af2585c82",
+    "email": "admin@example.com",
+    "first_name": "Admin",
+    "last_name": "User",
+    "tenant_id": "b32f8cc0-4241-4853-ad5a-40a3b8846b49",
+    "is_staff": true
+  }
+}
+
+================================================================================
+              TEST 1: HYBRID SEARCH (Should return REAL contracts)              
+================================================================================
+Status: 200
+
+Found 3 contracts:
+
+1. Title: Software Development Master Service Agreement
+   Score: 0.033
+   Type: MSA
+
+2. Title: Consulting Services Statement of Work
+   Score: 0.016
+   Type: SOW
+
+3. Title: SaaS Subscription Agreement
+   Score: 0.016
+   Type: License
+
+Full Response:
+{
+  "results": [
+    {
+      "id": "3f11a152-be06-43b3-9df2-dfc9ab172644",
+      "title": "Software Development Master Service Agreement",
+      "contract_type": "MSA",
+      "status": "active",
+      "created_at": "2026-01-05T08:57:43.587089Z",
+      "score": 0.03278688524590164,
+      "rank": 1,
+      "match_type": "hybrid",
+      "contract": {
+        "id": "3f11a152-be06-43b3-9df2-dfc9ab172644",
+        "tenant_id": "b32f8cc0-4241-4853-ad5a-40a3b8846b49",
+        "title": "Software Developme...
+
+================================================================================
+           TEST 2: AUTOCOMPLETE (Should suggest REAL contract titles)           
+================================================================================
+Status: 200
+Suggestions: {
+  "suggestions": [
+    "Employment Agreement - Senior Software Engineer",
+    "Software Development Master Service Agreement"
+  ]
+}
+
+================================================================================
+              TEST 3: AI CONTRACT GENERATION (REAL Gemini API call)             
+================================================================================
+Status: 202
+Response: {
+  "contract_id": "e8870bf5-de48-4bb7-ad29-740dd6a6d0ae",
+  "status": "processing",
+  "message": "Contract generation started. You will be notified when ready."
+}
+
+⏳ Waiting 15 seconds for AI generation...
+
+Generation Status: {
+  "contract_id": "e8870bf5-de48-4bb7-ad29-740dd6a6d0ae",
+  "status": "queued",
+  "task_id": null
+}...
+
+================================================================================
+                TEST 4: AI CLAUSE SUMMARY (REAL Gemini response)                
+================================================================================
+Status: 200
+
+ORIGINAL CLAUSE (317 chars):
+
+The Disclosing Party shall not be liable for any indirect, incidental, special, 
+consequential or punitive damages, or any loss of profits or revenues, whether 
+incurred directly or indirectly, or any loss of data, use, goodwill, or other 
+intangible losses resulting from unauthorized access to or use of services.
+
+
+AI SUMMARY:
+{
+  "original_text": "\nThe Disclosing Party shall not be liable for any indirect, incidental, special, \nconsequential or punitive damages, or any loss of profits or revenues, whether \nincurred directly or indirectly, or any loss of data, use, goodwill, or other \nintangible losses resulting from unauthorized access to or use of services.\n",
+  "summary": "Okay, here's a simplified explanation:\n\n1.  **What it means:** This clause says that if someone gets into the system without permission and causes you harm, the company providing the service isn't responsible for certain types of damages, like lost profits, missed opportunities, damage to reputation or emotional distress. It limits their liability to direct damages only.\n2.  **Why it's important:** It's important for the company to limit their financial risk. Without this clause, they could be on the hook for huge amounts of money if someone causes widespread problems.\n3.  **What obligations it creates:** This clause mainly creates obligations *for you* by limiting what you can recover if you're harmed by unauthorized access. It effectively says \"we're not liable for these specific damages\"."
+}
+
+================================================================================
+               TEST 5: FIND RELATED CONTRACTS (Vector similarity)               
+================================================================================
+Finding contracts similar to: Software Development Master Service Agreement (ID: 3f11a152-be06-43b3-9df2-dfc9ab172644)
+Status: 200
+
+Related contracts: {
+  "source_contract": {
+    "id": "3f11a152-be06-43b3-9df2-dfc9ab172644",
+    "title": "Software Development Master Service Agreement"
+  },
+  "related": [
+    {
+      "id": "1b58243a-cc9b-491e-ab0e-dd0bfeb6f7d1",
+      "similarity_score": 0.7885718243556964,
+      "contract": {
+        "id": "1b58243a-cc9b-491e-ab0e-dd0bfeb6f7d1",
+        "tenant_id": "b32f8cc0-4241-4853-ad5a-40a3b8846b49",
+        "title": "SaaS Subscription Agreement",
+        "contract_type": "License",
+        "status": "active",
+        "value": "50000.00",
+        "counterparty": "Enterprise Client Corp",
+        "start...
+
+================================================================================
+                 TEST 6: AI CONTRACT COMPARISON (REAL analysis)                 
+================================================================================
+Status: 200
+
+Comparing:
+  A: Software Development Master Service Agreement
+  B: Consulting Services Statement of Work
+
+AI Analysis:
+{
+  "contract_a": {
+    "id": "3f11a152-be06-43b3-9df2-dfc9ab172644",
+    "title": "Software Development Master Service Agreement"
+  },
+  "contract_b": {
+    "id": "6a350817-8ddd-4d4b-ab1a-db11c7eba1b0",
+    "title": "Consulting Services Statement of Work"
+  },
+  "comparison": {
+    "comparison_text": "Okay, here's a structured comparison of the two contracts, highlighting key differences and their impact on risk.\n\n## Key Differences\n\n1.  **Scope of Work:**\n    -   Contract A:  Focuses on **execution and implementation** of a tangible product (custom software). It entails development, testing, and potentially ongoing maintenance.  Emphasis is on building something specific.\n    -   Contract B: Focuses on **advisory services and strategy.** It likely involves analysis, recommendations...
+
+================================================================================
+                               ALL TESTS COMPLETE                               
+================================================================================
+
+RESULTS SAVED TO: full_test_results.txt
+Check above for REAL API responses with actual data!
+

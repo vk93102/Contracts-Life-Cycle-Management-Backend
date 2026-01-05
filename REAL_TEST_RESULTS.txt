@@ -1,0 +1,125 @@
+================================================================================
+                                 AUTHENTICATING                                 
+================================================================================
+Status: 200
+Response: {
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3NjkxOTI1LCJpYXQiOjE3Njc2MDU1MjUsImp0aSI6IjJkYzg0NGU1ZThiODRmNGU4NGFmYjIzYjFiY2Y3M2Y1IiwidXNlcl9pZCI6IjZlNjBmNDNhLWQxNDEtNDkyMi05OWU5LTcxMWFmMjU4NWM4MiJ9.RaMelcok2MzxrEYwy_ZnUVOToRp0RgDYS-VUrfM7lo4",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODIxMDMyNSwiaWF0IjoxNzY3NjA1NTI1LCJqdGkiOiIzYTIyMTg3Y2ViYWY0YTA5OTJiN2U3MzNlOGNjYzg1MCIsInVzZXJfaWQiOiI2ZTYwZjQzYS1kMTQxLTQ5MjItOTllOS03MTFhZjI1ODVjODIifQ.tu9yWgmH_GJ7vPN7ixPEXmgDcyZNreHVov4DIGlD9J4",
+  "user": {
+    "user_id": "6e60f43a-d141-4922-99e9-711af2585c82",
+    "email": "admin@example.com",
+    "first_name": "Admin",
+    "last_name": "User",
+    "tenant_id": "b32f8cc0-4241-4853-ad5a-40a3b8846b49",
+    "is_staff": true
+  }
+}
+
+================================================================================
+              TEST 1: HYBRID SEARCH (Should return REAL contracts)              
+================================================================================
+Status: 200
+
+Found 3 contracts:
+
+1. Title: Software Development Master Service Agreement
+   Score: 0.033
+   Type: MSA
+
+2. Title: Employment Agreement - Senior Software Engineer
+   Score: 0.016
+   Type: Employment
+
+3. Title: Consulting Services Statement of Work
+   Score: 0.016
+   Type: SOW
+
+Full Response:
+{
+  "results": [
+    {
+      "id": "3f11a152-be06-43b3-9df2-dfc9ab172644",
+      "title": "Software Development Master Service Agreement",
+      "contract_type": "MSA",
+      "status": "active",
+      "created_at": "2026-01-05T08:57:43.587089Z",
+      "score": 0.03278688524590164,
+      "rank": 1,
+      "match_type": "hybrid",
+      "contract": {
+        "id": "3f11a152-be06-43b3-9df2-dfc9ab172644",
+        "tenant_id": "b32f8cc0-4241-4853-ad5a-40a3b8846b49",
+        "title": "Software Developme...
+
+================================================================================
+           TEST 2: AUTOCOMPLETE (Should suggest REAL contract titles)           
+================================================================================
+Status: 200
+Suggestions: {
+  "suggestions": [
+    "Employment Agreement - Senior Software Engineer",
+    "Software Development Master Service Agreement"
+  ]
+}
+
+================================================================================
+              TEST 3: AI CONTRACT GENERATION (REAL Gemini API call)             
+================================================================================
+Status: 202
+Response: {
+  "contract_id": "2e8ee480-ecae-466b-9aab-fc0dc3fd650b",
+  "status": "processing",
+  "message": "Contract generation started. You will be notified when ready."
+}
+
+⏳ Waiting 15 seconds for AI generation...
+
+Generation Status: {
+  "contract_id": "2e8ee480-ecae-466b-9aab-fc0dc3fd650b",
+  "status": "queued",
+  "task_id": null
+}...
+
+================================================================================
+                TEST 4: AI CLAUSE SUMMARY (REAL Gemini response)                
+================================================================================
+Status: 200
+
+ORIGINAL CLAUSE (317 chars):
+
+The Disclosing Party shall not be liable for any indirect, incidental, special, 
+consequential or punitive damages, or any loss of profits or revenues, whether 
+incurred directly or indirectly, or any loss of data, use, goodwill, or other 
+intangible losses resulting from unauthorized access to or use of services.
+
+
+AI SUMMARY:
+{
+  "original_text": "\nThe Disclosing Party shall not be liable for any indirect, incidental, special, \nconsequential or punitive damages, or any loss of profits or revenues, whether \nincurred directly or indirectly, or any loss of data, use, goodwill, or other \nintangible losses resulting from unauthorized access to or use of services.\n",
+  "summary": "Could not generate summary"
+}
+
+================================================================================
+               TEST 5: FIND RELATED CONTRACTS (Vector similarity)               
+================================================================================
+Finding contracts similar to: Software Development Master Service Agreement (ID: 3f11a152-be06-43b3-9df2-dfc9ab172644)
+Status: 404
+Traceback (most recent call last):
+  File "/Users/vishaljha/.pyenv/versions/3.10.13/lib/python3.10/site-packages/requests/models.py", line 971, in json
+    return complexjson.loads(self.text, **kwargs)
+  File "/Users/vishaljha/.pyenv/versions/3.10.13/lib/python3.10/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+  File "/Users/vishaljha/.pyenv/versions/3.10.13/lib/python3.10/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+  File "/Users/vishaljha/.pyenv/versions/3.10.13/lib/python3.10/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/vishaljha/Desktop/SK/CLM/backend/run_real_tests.py", line 131, in <module>
+    related_result = response.json()
+  File "/Users/vishaljha/.pyenv/versions/3.10.13/lib/python3.10/site-packages/requests/models.py", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)

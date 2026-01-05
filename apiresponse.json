@@ -1,44 +1,1270 @@
 [
   {
-    "timestamp": "2026-01-04T08:40:31.500365",
+    "timestamp": "2026-01-05T10:31:37.901435",
     "method": "POST",
     "path": "/api/auth/register/",
-    "description": "Register",
-    "error": "HTTPConnectionPool(host='127.0.0.1', port=4000): Max retries exceeded with url: /api/auth/register/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1040a0b20>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+    "description": "Register new user for workflow testing",
+    "status_code": 201,
+    "response": {
+      "message": "User created successfully",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3Njc1Njk3LCJpYXQiOjE3Njc1ODkyOTcsImp0aSI6IjYzMTFiMTI1NTQ3NDRkNmE4Zjc2ZTQ2NmE3OTBkZjE5IiwidXNlcl9pZCI6IjNmYzhmMDYxLTA1MDYtNDNjMy05YmU5LWY3MDI1MGZhZjQ0NCJ9.uTiBiPVzHSDjPkaJkKG7DNHcbYKzuFQpZm8t0AsxkPU",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODE5NDA5NywiaWF0IjoxNzY3NTg5Mjk3LCJqdGkiOiIxNzUzY2M4NzVhOGE0MGNkYmY4OGZjYjcwZWZiOTllOSIsInVzZXJfaWQiOiIzZmM4ZjA2MS0wNTA2LTQzYzMtOWJlOS1mNzAyNTBmYWY0NDQifQ.K87cC032FtfqNSsuvcjh-1BuzKQQL05BZs9fExpRWIU",
+      "user": {
+        "user_id": "3fc8f061-0506-43c3-9be9-f70250faf444",
+        "email": "workflow_test_1767589295@example.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "0f7a26be-9393-4001-96a2-7db6542835a0",
+        "is_staff": false
+      }
+    }
   },
   {
-    "timestamp": "2026-01-04T08:40:31.504529",
+    "timestamp": "2026-01-05T10:31:40.642754",
     "method": "POST",
-    "path": "/api/auth/login/",
-    "description": "Login",
-    "error": "HTTPConnectionPool(host='127.0.0.1', port=4000): Max retries exceeded with url: /api/auth/login/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1040a1db0>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+    "path": "/api/workflows/config/",
+    "description": "Create workflow definition",
+    "status_code": 201,
+    "response": {
+      "id": "572a052a-7f08-4ed0-9b87-9fe165b8cc6d",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_value__lte": 100000,
+        "contract_type": "MSA"
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "3fc8f061-0506-43c3-9be9-f70250faf444",
+      "created_at": "2026-01-05T05:01:40.018746Z",
+      "updated_at": "2026-01-05T05:01:40.018812Z"
+    }
   },
   {
-    "timestamp": "2026-01-04T08:40:31.506686",
+    "timestamp": "2026-01-05T10:31:43.337755",
     "method": "GET",
-    "path": "/api/auth/me/",
-    "description": "Me",
-    "error": "HTTPConnectionPool(host='127.0.0.1', port=4000): Max retries exceeded with url: /api/auth/me/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1040a2620>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+    "path": "/api/workflows/config/",
+    "description": "List all workflow definitions",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "572a052a-7f08-4ed0-9b87-9fe165b8cc6d",
+          "name": "Standard Contract Approval",
+          "description": "Standard approval workflow for contracts under $100k",
+          "contract_types": [],
+          "trigger_conditions": {
+            "contract_type": "MSA",
+            "contract_value__lte": 100000
+          },
+          "stages": [],
+          "is_active": true,
+          "priority": 0,
+          "created_by": "3fc8f061-0506-43c3-9be9-f70250faf444",
+          "created_at": "2026-01-05T05:01:40.018746Z",
+          "updated_at": "2026-01-05T05:01:40.018812Z"
+        }
+      ]
+    }
   },
   {
-    "timestamp": "2026-01-04T08:40:31.508641",
-    "method": "POST",
-    "path": "/api/auth/forgot-password/",
-    "description": "Forgot password",
-    "error": "HTTPConnectionPool(host='127.0.0.1', port=4000): Max retries exceeded with url: /api/auth/forgot-password/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1040a2ef0>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+    "timestamp": "2026-01-05T10:31:45.808920",
+    "method": "GET",
+    "path": "/api/workflows/config/572a052a-7f08-4ed0-9b87-9fe165b8cc6d/",
+    "description": "Get workflow definition details",
+    "status_code": 200,
+    "response": {
+      "id": "572a052a-7f08-4ed0-9b87-9fe165b8cc6d",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_type": "MSA",
+        "contract_value__lte": 100000
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "3fc8f061-0506-43c3-9be9-f70250faf444",
+      "created_at": "2026-01-05T05:01:40.018746Z",
+      "updated_at": "2026-01-05T05:01:40.018812Z"
+    }
   },
   {
-    "timestamp": "2026-01-04T08:40:31.511946",
+    "timestamp": "2026-01-05T10:31:49.106974",
     "method": "POST",
     "path": "/api/contracts/",
-    "description": "Create contract with .txt upload (R2)",
-    "error": "HTTPConnectionPool(host='127.0.0.1', port=4000): Max retries exceeded with url: /api/contracts/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1040a3790>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+    "description": "Create contract for workflow testing",
+    "status_code": 201,
+    "response": {
+      "id": "c0b52386-8831-4713-9983-a8c832eb4f14",
+      "tenant_id": "0f7a26be-9393-4001-96a2-7db6542835a0",
+      "title": "Test Service Agreement",
+      "contract_type": "MSA",
+      "status": "draft",
+      "value": null,
+      "counterparty": null,
+      "start_date": null,
+      "end_date": null,
+      "created_by": "3fc8f061-0506-43c3-9be9-f70250faf444",
+      "created_at": "2026-01-05T05:01:48.083660Z",
+      "updated_at": "2026-01-05T05:01:48.083694Z"
+    }
   },
   {
-    "timestamp": "2026-01-04T08:40:31.513447",
+    "timestamp": "2026-01-05T10:31:56.064977",
     "method": "GET",
+    "path": "/api/contracts/c0b52386-8831-4713-9983-a8c832eb4f14/workflow/status/",
+    "description": "Get contract workflow status",
+    "status_code": 200,
+    "response": {
+      "contract_id": "c0b52386-8831-4713-9983-a8c832eb4f14",
+      "status": "draft",
+      "workflow_active": false,
+      "message": "No active workflow for this contract"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:31:59.105211",
+    "method": "POST",
+    "path": "/api/contracts/validate-clauses/",
+    "description": "Validate clause selection",
+    "status_code": 200,
+    "response": {
+      "is_valid": true,
+      "errors": [],
+      "warnings": [],
+      "mandatory_clauses": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:01.520584",
+    "method": "GET",
+    "path": "/api/approvals/",
+    "description": "List pending approvals for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:15.719840",
+    "method": "GET",
+    "path": "/api/admin/sla-rules/",
+    "description": "List all SLA rules",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:18.801438",
+    "method": "POST",
+    "path": "/api/admin/sla-breaches/check_breaches/",
+    "description": "Check for SLA breaches across all workflows",
+    "status_code": 200,
+    "response": {
+      "message": "SLA breach check completed",
+      "breaches_found": 0,
+      "breach_ids": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:21.869024",
+    "method": "GET",
+    "path": "/api/admin/sla-breaches/",
+    "description": "List all SLA breaches",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:24.813186",
+    "method": "GET",
+    "path": "/api/audit-logs/",
+    "description": "List all audit logs",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "9a75f843-ae73-4256-8b7e-1c92c4094646",
+          "user_id": "3fc8f061-0506-43c3-9be9-f70250faf444",
+          "action": "settings_changed",
+          "resource_type": "workflow_definition",
+          "resource_id": "572a052a-7f08-4ed0-9b87-9fe165b8cc6d",
+          "contract": null,
+          "ip_address": null,
+          "user_agent": null,
+          "changes": {},
+          "metadata": {
+            "workflow_name": "Standard Contract Approval"
+          },
+          "timestamp": "2026-01-05T05:01:40.339409Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:27.770948",
+    "method": "GET",
+    "path": "/api/contracts/c0b52386-8831-4713-9983-a8c832eb4f14/audit/",
+    "description": "Get audit trail for specific contract",
+    "status_code": 200,
+    "response": {
+      "contract_id": "c0b52386-8831-4713-9983-a8c832eb4f14",
+      "contract_title": "Test Service Agreement",
+      "total_events": 0,
+      "audit_trail": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:30.442940",
+    "method": "POST",
+    "path": "/api/admin/users/roles/",
+    "description": "Assign role to user",
+    "status_code": 201,
+    "response": {
+      "id": "f3bc5ca1-45ac-49fa-9769-f9a60a7324bc",
+      "user_id": "3fc8f061-0506-43c3-9be9-f70250faf444",
+      "role": "legal",
+      "permissions": {
+        "can_approve": true,
+        "can_edit_clauses": true
+      },
+      "assigned_by": "3fc8f061-0506-43c3-9be9-f70250faf444",
+      "assigned_at": "2026-01-05T05:02:29.847687Z",
+      "expires_at": null,
+      "is_active": true
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:33.212741",
+    "method": "GET",
+    "path": "/api/admin/users/roles/",
+    "description": "List all user roles",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "f3bc5ca1-45ac-49fa-9769-f9a60a7324bc",
+          "user_id": "3fc8f061-0506-43c3-9be9-f70250faf444",
+          "role": "legal",
+          "permissions": {
+            "can_approve": true,
+            "can_edit_clauses": true
+          },
+          "assigned_by": "3fc8f061-0506-43c3-9be9-f70250faf444",
+          "assigned_at": "2026-01-05T05:02:29.847687Z",
+          "expires_at": null,
+          "is_active": true
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:35.786275",
+    "method": "GET",
+    "path": "/api/notifications/",
+    "description": "List notifications for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:41.215955",
+    "method": "POST",
+    "path": "/api/notifications/mark_all_read/",
+    "description": "Mark all notifications as read",
+    "status_code": 200,
+    "response": {
+      "message": "0 notifications marked as read"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:32:44.007628",
+    "method": "GET",
+    "path": "/api/workflows/instances/",
+    "description": "List all workflow instances",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:06.562846",
+    "method": "POST",
+    "path": "/api/auth/register/",
+    "description": "Register new user for workflow testing",
+    "status_code": 201,
+    "response": {
+      "message": "User created successfully",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3Njc1OTY2LCJpYXQiOjE3Njc1ODk1NjYsImp0aSI6Ijc4YTFmMTA2OWQwMTRjYTViMzYyNzNmYjI0MTQ4YWFkIiwidXNlcl9pZCI6IjE5NTA0NzhmLTcwYmQtNDRlZS1iMjUyLTYwODJmZWI3NTg4ZiJ9.k2kreHCL-M9hJYE34H7FPF2hmEU80tfuAluBOi9kLQg",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODE5NDM2NiwiaWF0IjoxNzY3NTg5NTY2LCJqdGkiOiJhNzU5NjUwZDI1NjY0NjAxOGI4MDUyOTg1NDQwZDQ5YiIsInVzZXJfaWQiOiIxOTUwNDc4Zi03MGJkLTQ0ZWUtYjI1Mi02MDgyZmViNzU4OGYifQ.T2Qhl4EFSkpKVTUjYofaQwcnfZJe49_Da0CPWHsBwpQ",
+      "user": {
+        "user_id": "1950478f-70bd-44ee-b252-6082feb7588f",
+        "email": "workflow_test_1767589563@example.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "e328763e-1ff0-44a8-821a-fcfeceb2757e",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:09.299126",
+    "method": "POST",
+    "path": "/api/workflows/config/",
+    "description": "Create workflow definition",
+    "status_code": 201,
+    "response": {
+      "id": "72fba045-321e-4ccd-bbc7-d67a9cb5e10c",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_value__lte": 100000,
+        "contract_type": "MSA"
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "1950478f-70bd-44ee-b252-6082feb7588f",
+      "created_at": "2026-01-05T05:06:08.689487Z",
+      "updated_at": "2026-01-05T05:06:08.689551Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:11.990653",
+    "method": "GET",
+    "path": "/api/workflows/config/",
+    "description": "List all workflow definitions",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "72fba045-321e-4ccd-bbc7-d67a9cb5e10c",
+          "name": "Standard Contract Approval",
+          "description": "Standard approval workflow for contracts under $100k",
+          "contract_types": [],
+          "trigger_conditions": {
+            "contract_type": "MSA",
+            "contract_value__lte": 100000
+          },
+          "stages": [],
+          "is_active": true,
+          "priority": 0,
+          "created_by": "1950478f-70bd-44ee-b252-6082feb7588f",
+          "created_at": "2026-01-05T05:06:08.689487Z",
+          "updated_at": "2026-01-05T05:06:08.689551Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:14.724651",
+    "method": "GET",
+    "path": "/api/workflows/config/72fba045-321e-4ccd-bbc7-d67a9cb5e10c/",
+    "description": "Get workflow definition details",
+    "status_code": 200,
+    "response": {
+      "id": "72fba045-321e-4ccd-bbc7-d67a9cb5e10c",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_type": "MSA",
+        "contract_value__lte": 100000
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "1950478f-70bd-44ee-b252-6082feb7588f",
+      "created_at": "2026-01-05T05:06:08.689487Z",
+      "updated_at": "2026-01-05T05:06:08.689551Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:17.996760",
+    "method": "POST",
     "path": "/api/contracts/",
-    "description": "List contracts",
-    "error": "HTTPConnectionPool(host='127.0.0.1', port=4000): Max retries exceeded with url: /api/contracts/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1040a2770>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+    "description": "Create contract for workflow testing",
+    "status_code": 201,
+    "response": {
+      "id": "9901de39-9562-4b8e-907c-be856aa81cef",
+      "tenant_id": "e328763e-1ff0-44a8-821a-fcfeceb2757e",
+      "title": "Test Service Agreement",
+      "contract_type": "MSA",
+      "status": "draft",
+      "value": null,
+      "counterparty": null,
+      "start_date": null,
+      "end_date": null,
+      "created_by": "1950478f-70bd-44ee-b252-6082feb7588f",
+      "created_at": "2026-01-05T05:06:17.043131Z",
+      "updated_at": "2026-01-05T05:06:17.043163Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:24.059021",
+    "method": "GET",
+    "path": "/api/contracts/9901de39-9562-4b8e-907c-be856aa81cef/workflow/status/",
+    "description": "Get contract workflow status",
+    "status_code": 200,
+    "response": {
+      "contract_id": "9901de39-9562-4b8e-907c-be856aa81cef",
+      "status": "draft",
+      "workflow_active": false,
+      "message": "No active workflow for this contract"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:26.435252",
+    "method": "POST",
+    "path": "/api/contracts/validate-clauses/",
+    "description": "Validate clause selection",
+    "status_code": 200,
+    "response": {
+      "is_valid": true,
+      "errors": [],
+      "warnings": [],
+      "mandatory_clauses": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:28.831455",
+    "method": "GET",
+    "path": "/api/approvals/",
+    "description": "List pending approvals for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:42.275102",
+    "method": "GET",
+    "path": "/api/admin/sla-rules/",
+    "description": "List all SLA rules",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:45.339820",
+    "method": "POST",
+    "path": "/api/admin/sla-breaches/check_breaches/",
+    "description": "Check for SLA breaches across all workflows",
+    "status_code": 200,
+    "response": {
+      "message": "SLA breach check completed",
+      "breaches_found": 0,
+      "breach_ids": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:48.056965",
+    "method": "GET",
+    "path": "/api/admin/sla-breaches/",
+    "description": "List all SLA breaches",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:51.385891",
+    "method": "GET",
+    "path": "/api/audit-logs/",
+    "description": "List all audit logs",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "805e8e9c-d2ee-4237-8f19-65b17b220850",
+          "user_id": "1950478f-70bd-44ee-b252-6082feb7588f",
+          "action": "settings_changed",
+          "resource_type": "workflow_definition",
+          "resource_id": "72fba045-321e-4ccd-bbc7-d67a9cb5e10c",
+          "contract": null,
+          "ip_address": null,
+          "user_agent": null,
+          "changes": {},
+          "metadata": {
+            "workflow_name": "Standard Contract Approval"
+          },
+          "timestamp": "2026-01-05T05:06:08.994523Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:54.966519",
+    "method": "GET",
+    "path": "/api/contracts/9901de39-9562-4b8e-907c-be856aa81cef/audit/",
+    "description": "Get audit trail for specific contract",
+    "status_code": 200,
+    "response": {
+      "contract_id": "9901de39-9562-4b8e-907c-be856aa81cef",
+      "contract_title": "Test Service Agreement",
+      "total_events": 0,
+      "audit_trail": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:36:57.844786",
+    "method": "POST",
+    "path": "/api/admin/users/roles/",
+    "description": "Assign role to user",
+    "status_code": 201,
+    "response": {
+      "id": "cdab1a30-3556-4a49-a2d9-d8d1be04f422",
+      "user_id": "1950478f-70bd-44ee-b252-6082feb7588f",
+      "role": "legal",
+      "permissions": {
+        "can_approve": true,
+        "can_edit_clauses": true
+      },
+      "assigned_by": "1950478f-70bd-44ee-b252-6082feb7588f",
+      "assigned_at": "2026-01-05T05:06:57.147637Z",
+      "expires_at": null,
+      "is_active": true
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:37:00.532427",
+    "method": "GET",
+    "path": "/api/admin/users/roles/",
+    "description": "List all user roles",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "cdab1a30-3556-4a49-a2d9-d8d1be04f422",
+          "user_id": "1950478f-70bd-44ee-b252-6082feb7588f",
+          "role": "legal",
+          "permissions": {
+            "can_approve": true,
+            "can_edit_clauses": true
+          },
+          "assigned_by": "1950478f-70bd-44ee-b252-6082feb7588f",
+          "assigned_at": "2026-01-05T05:06:57.147637Z",
+          "expires_at": null,
+          "is_active": true
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:37:02.937109",
+    "method": "GET",
+    "path": "/api/notifications/",
+    "description": "List notifications for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:37:08.066592",
+    "method": "POST",
+    "path": "/api/notifications/mark_all_read/",
+    "description": "Mark all notifications as read",
+    "status_code": 200,
+    "response": {
+      "message": "0 notifications marked as read"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T10:37:10.636456",
+    "method": "GET",
+    "path": "/api/workflows/instances/",
+    "description": "List all workflow instances",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:00:44.681054",
+    "method": "POST",
+    "path": "/api/auth/register/",
+    "description": "Register new user for workflow testing",
+    "status_code": 201,
+    "response": {
+      "message": "User created successfully",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3Njc3NDQ0LCJpYXQiOjE3Njc1OTEwNDQsImp0aSI6IjEyNzdiZmM0ZDhkZDQxMDE5Mjk1Nzg5MDk1ODFjMmMzIiwidXNlcl9pZCI6ImM1YjA5NDZmLTdmYzEtNGM2Ny05NjEyLTdmMDY0NzY5NGE5NSJ9.AEy-shK16pT7expJYMWyd-CLPt8-Oyfl6gPBiqT5Cjg",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODE5NTg0NCwiaWF0IjoxNzY3NTkxMDQ0LCJqdGkiOiIwNmJjYjJhNmU0Y2Y0MjU3ODg2Yjg5M2FkNzYwNDcwYyIsInVzZXJfaWQiOiJjNWIwOTQ2Zi03ZmMxLTRjNjctOTYxMi03ZjA2NDc2OTRhOTUifQ.z-s649YpQ7UcCsiSHyrp26OeJWLX77DSPM0E7mq93X0",
+      "user": {
+        "user_id": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+        "email": "workflow_test_1767591042@example.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "ffbfc2bf-d583-4f93-82b3-9132082d4950",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:00:47.410833",
+    "method": "POST",
+    "path": "/api/workflows/config/",
+    "description": "Create workflow definition",
+    "status_code": 201,
+    "response": {
+      "id": "35f3230d-2380-4e33-9677-ccee6ad2b870",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_value__lte": 100000,
+        "contract_type": "MSA"
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+      "created_at": "2026-01-05T05:30:46.819712Z",
+      "updated_at": "2026-01-05T05:30:46.819752Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:00:50.459848",
+    "method": "GET",
+    "path": "/api/workflows/config/",
+    "description": "List all workflow definitions",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "35f3230d-2380-4e33-9677-ccee6ad2b870",
+          "name": "Standard Contract Approval",
+          "description": "Standard approval workflow for contracts under $100k",
+          "contract_types": [],
+          "trigger_conditions": {
+            "contract_type": "MSA",
+            "contract_value__lte": 100000
+          },
+          "stages": [],
+          "is_active": true,
+          "priority": 0,
+          "created_by": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+          "created_at": "2026-01-05T05:30:46.819712Z",
+          "updated_at": "2026-01-05T05:30:46.819752Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:00:53.423602",
+    "method": "GET",
+    "path": "/api/workflows/config/35f3230d-2380-4e33-9677-ccee6ad2b870/",
+    "description": "Get workflow definition details",
+    "status_code": 200,
+    "response": {
+      "id": "35f3230d-2380-4e33-9677-ccee6ad2b870",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_type": "MSA",
+        "contract_value__lte": 100000
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+      "created_at": "2026-01-05T05:30:46.819712Z",
+      "updated_at": "2026-01-05T05:30:46.819752Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:00:56.806044",
+    "method": "POST",
+    "path": "/api/contracts/",
+    "description": "Create contract for workflow testing",
+    "status_code": 201,
+    "response": {
+      "id": "79056271-f5d3-4176-88eb-91d7aa1907da",
+      "tenant_id": "ffbfc2bf-d583-4f93-82b3-9132082d4950",
+      "title": "Test Service Agreement",
+      "contract_type": "MSA",
+      "status": "draft",
+      "value": null,
+      "counterparty": null,
+      "start_date": null,
+      "end_date": null,
+      "created_by": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+      "created_at": "2026-01-05T05:30:55.641080Z",
+      "updated_at": "2026-01-05T05:30:55.641108Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:03.626107",
+    "method": "GET",
+    "path": "/api/contracts/79056271-f5d3-4176-88eb-91d7aa1907da/workflow/status/",
+    "description": "Get contract workflow status",
+    "status_code": 200,
+    "response": {
+      "contract_id": "79056271-f5d3-4176-88eb-91d7aa1907da",
+      "status": "draft",
+      "workflow_active": false,
+      "message": "No active workflow for this contract"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:06.436459",
+    "method": "POST",
+    "path": "/api/contracts/validate-clauses/",
+    "description": "Validate clause selection",
+    "status_code": 200,
+    "response": {
+      "is_valid": true,
+      "errors": [],
+      "warnings": [],
+      "mandatory_clauses": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:09.075320",
+    "method": "GET",
+    "path": "/api/approvals/",
+    "description": "List pending approvals for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:23.332383",
+    "method": "GET",
+    "path": "/api/admin/sla-rules/",
+    "description": "List all SLA rules",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:26.216735",
+    "method": "POST",
+    "path": "/api/admin/sla-breaches/check_breaches/",
+    "description": "Check for SLA breaches across all workflows",
+    "status_code": 200,
+    "response": {
+      "message": "SLA breach check completed",
+      "breaches_found": 0,
+      "breach_ids": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:28.816226",
+    "method": "GET",
+    "path": "/api/admin/sla-breaches/",
+    "description": "List all SLA breaches",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:31.632183",
+    "method": "GET",
+    "path": "/api/audit-logs/",
+    "description": "List all audit logs",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "27ca6e32-549f-499d-b057-c9f00d74f009",
+          "user_id": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+          "action": "settings_changed",
+          "resource_type": "workflow_definition",
+          "resource_id": "35f3230d-2380-4e33-9677-ccee6ad2b870",
+          "contract": null,
+          "ip_address": null,
+          "user_agent": null,
+          "changes": {},
+          "metadata": {
+            "workflow_name": "Standard Contract Approval"
+          },
+          "timestamp": "2026-01-05T05:30:47.112906Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:34.723242",
+    "method": "GET",
+    "path": "/api/contracts/79056271-f5d3-4176-88eb-91d7aa1907da/audit/",
+    "description": "Get audit trail for specific contract",
+    "status_code": 200,
+    "response": {
+      "contract_id": "79056271-f5d3-4176-88eb-91d7aa1907da",
+      "contract_title": "Test Service Agreement",
+      "total_events": 0,
+      "audit_trail": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:37.670724",
+    "method": "POST",
+    "path": "/api/admin/users/roles/",
+    "description": "Assign role to user",
+    "status_code": 201,
+    "response": {
+      "id": "57ac2b1f-ba65-4d0d-8e8c-f9079c8a0c1d",
+      "user_id": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+      "role": "legal",
+      "permissions": {
+        "can_approve": true,
+        "can_edit_clauses": true
+      },
+      "assigned_by": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+      "assigned_at": "2026-01-05T05:31:37.032330Z",
+      "expires_at": null,
+      "is_active": true
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:40.869443",
+    "method": "GET",
+    "path": "/api/admin/users/roles/",
+    "description": "List all user roles",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "57ac2b1f-ba65-4d0d-8e8c-f9079c8a0c1d",
+          "user_id": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+          "role": "legal",
+          "permissions": {
+            "can_approve": true,
+            "can_edit_clauses": true
+          },
+          "assigned_by": "c5b0946f-7fc1-4c67-9612-7f0647694a95",
+          "assigned_at": "2026-01-05T05:31:37.032330Z",
+          "expires_at": null,
+          "is_active": true
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:43.829189",
+    "method": "GET",
+    "path": "/api/notifications/",
+    "description": "List notifications for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:49.599968",
+    "method": "POST",
+    "path": "/api/notifications/mark_all_read/",
+    "description": "Mark all notifications as read",
+    "status_code": 200,
+    "response": {
+      "message": "0 notifications marked as read"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:01:52.287702",
+    "method": "GET",
+    "path": "/api/workflows/instances/",
+    "description": "List all workflow instances",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:05:58.852046",
+    "method": "POST",
+    "path": "/api/auth/register/",
+    "description": "Register new user for workflow testing",
+    "status_code": 201,
+    "response": {
+      "message": "User created successfully",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY3Njc3NzU4LCJpYXQiOjE3Njc1OTEzNTgsImp0aSI6IjdkODFkNGVlZWRlYjQ4YmRhOGE0NDA1Nzg3MzgyNzI3IiwidXNlcl9pZCI6ImQ1OGUwZTlmLWJlZWEtNDI4NC1iNjZiLTJmZTY4Y2I2NGY3MyJ9.HGNAdI-QhLxZhkw3X9to5JNdO1mYgIHWet9V2L9XcJk",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2ODE5NjE1OCwiaWF0IjoxNzY3NTkxMzU4LCJqdGkiOiIwNjQ3ZDgxMDZlNzM0MTNkYTYxZTQyZWM3ODdjNGRjYSIsInVzZXJfaWQiOiJkNThlMGU5Zi1iZWVhLTQyODQtYjY2Yi0yZmU2OGNiNjRmNzMifQ.Z9QalvlANivbK3VVadblD2gHChqJKBUGqUtIOCP4Rpk",
+      "user": {
+        "user_id": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+        "email": "workflow_test_1767591355@example.com",
+        "first_name": "",
+        "last_name": "",
+        "tenant_id": "324276af-a7bf-4368-a41a-2ac0c6d592c9",
+        "is_staff": false
+      }
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:01.691078",
+    "method": "POST",
+    "path": "/api/workflows/config/",
+    "description": "Create workflow definition",
+    "status_code": 201,
+    "response": {
+      "id": "2d9ee88a-111d-4d7a-86c0-ca08022fc226",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_value__lte": 100000,
+        "contract_type": "MSA"
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+      "created_at": "2026-01-05T05:36:01.076521Z",
+      "updated_at": "2026-01-05T05:36:01.076573Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:04.439835",
+    "method": "GET",
+    "path": "/api/workflows/config/",
+    "description": "List all workflow definitions",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "2d9ee88a-111d-4d7a-86c0-ca08022fc226",
+          "name": "Standard Contract Approval",
+          "description": "Standard approval workflow for contracts under $100k",
+          "contract_types": [],
+          "trigger_conditions": {
+            "contract_type": "MSA",
+            "contract_value__lte": 100000
+          },
+          "stages": [],
+          "is_active": true,
+          "priority": 0,
+          "created_by": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+          "created_at": "2026-01-05T05:36:01.076521Z",
+          "updated_at": "2026-01-05T05:36:01.076573Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:06.800424",
+    "method": "GET",
+    "path": "/api/workflows/config/2d9ee88a-111d-4d7a-86c0-ca08022fc226/",
+    "description": "Get workflow definition details",
+    "status_code": 200,
+    "response": {
+      "id": "2d9ee88a-111d-4d7a-86c0-ca08022fc226",
+      "name": "Standard Contract Approval",
+      "description": "Standard approval workflow for contracts under $100k",
+      "contract_types": [],
+      "trigger_conditions": {
+        "contract_type": "MSA",
+        "contract_value__lte": 100000
+      },
+      "stages": [],
+      "is_active": true,
+      "priority": 0,
+      "created_by": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+      "created_at": "2026-01-05T05:36:01.076521Z",
+      "updated_at": "2026-01-05T05:36:01.076573Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:10.135074",
+    "method": "POST",
+    "path": "/api/contracts/",
+    "description": "Create contract for workflow testing",
+    "status_code": 201,
+    "response": {
+      "id": "7850a131-b3e4-41d4-b33a-4e624ab5f92a",
+      "tenant_id": "324276af-a7bf-4368-a41a-2ac0c6d592c9",
+      "title": "Test Service Agreement",
+      "contract_type": "MSA",
+      "status": "draft",
+      "value": null,
+      "counterparty": null,
+      "start_date": null,
+      "end_date": null,
+      "created_by": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+      "created_at": "2026-01-05T05:36:09.132258Z",
+      "updated_at": "2026-01-05T05:36:09.132297Z"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:16.800675",
+    "method": "GET",
+    "path": "/api/contracts/7850a131-b3e4-41d4-b33a-4e624ab5f92a/workflow/status/",
+    "description": "Get contract workflow status",
+    "status_code": 200,
+    "response": {
+      "contract_id": "7850a131-b3e4-41d4-b33a-4e624ab5f92a",
+      "status": "draft",
+      "workflow_active": false,
+      "message": "No active workflow for this contract"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:19.575877",
+    "method": "POST",
+    "path": "/api/contracts/validate-clauses/",
+    "description": "Validate clause selection",
+    "status_code": 200,
+    "response": {
+      "is_valid": true,
+      "errors": [],
+      "warnings": [],
+      "mandatory_clauses": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:22.625387",
+    "method": "GET",
+    "path": "/api/approvals/",
+    "description": "List pending approvals for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:36.649451",
+    "method": "GET",
+    "path": "/api/admin/sla-rules/",
+    "description": "List all SLA rules",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:39.140349",
+    "method": "POST",
+    "path": "/api/admin/sla-breaches/check_breaches/",
+    "description": "Check for SLA breaches across all workflows",
+    "status_code": 200,
+    "response": {
+      "message": "SLA breach check completed",
+      "breaches_found": 0,
+      "breach_ids": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:42.110301",
+    "method": "GET",
+    "path": "/api/admin/sla-breaches/",
+    "description": "List all SLA breaches",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:45.384278",
+    "method": "GET",
+    "path": "/api/audit-logs/",
+    "description": "List all audit logs",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "34c7ed49-f910-413f-adb6-aded6a47cccf",
+          "user_id": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+          "action": "settings_changed",
+          "resource_type": "workflow_definition",
+          "resource_id": "2d9ee88a-111d-4d7a-86c0-ca08022fc226",
+          "contract": null,
+          "ip_address": null,
+          "user_agent": null,
+          "changes": {},
+          "metadata": {
+            "workflow_name": "Standard Contract Approval"
+          },
+          "timestamp": "2026-01-05T05:36:01.380615Z"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:48.847376",
+    "method": "GET",
+    "path": "/api/contracts/7850a131-b3e4-41d4-b33a-4e624ab5f92a/audit/",
+    "description": "Get audit trail for specific contract",
+    "status_code": 200,
+    "response": {
+      "contract_id": "7850a131-b3e4-41d4-b33a-4e624ab5f92a",
+      "contract_title": "Test Service Agreement",
+      "total_events": 0,
+      "audit_trail": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:51.570965",
+    "method": "POST",
+    "path": "/api/admin/users/roles/",
+    "description": "Assign role to user",
+    "status_code": 201,
+    "response": {
+      "id": "ff90c589-4501-4ff6-b6d8-6dffeaf30f4e",
+      "user_id": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+      "role": "legal",
+      "permissions": {
+        "can_approve": true,
+        "can_edit_clauses": true
+      },
+      "assigned_by": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+      "assigned_at": "2026-01-05T05:36:50.964698Z",
+      "expires_at": null,
+      "is_active": true
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:54.355960",
+    "method": "GET",
+    "path": "/api/admin/users/roles/",
+    "description": "List all user roles",
+    "status_code": 200,
+    "response": {
+      "count": 1,
+      "next": null,
+      "previous": null,
+      "results": [
+        {
+          "id": "ff90c589-4501-4ff6-b6d8-6dffeaf30f4e",
+          "user_id": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+          "role": "legal",
+          "permissions": {
+            "can_approve": true,
+            "can_edit_clauses": true
+          },
+          "assigned_by": "d58e0e9f-beea-4284-b66b-2fe68cb64f73",
+          "assigned_at": "2026-01-05T05:36:50.964698Z",
+          "expires_at": null,
+          "is_active": true
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:06:56.766105",
+    "method": "GET",
+    "path": "/api/notifications/",
+    "description": "List notifications for current user",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:07:02.487849",
+    "method": "POST",
+    "path": "/api/notifications/mark_all_read/",
+    "description": "Mark all notifications as read",
+    "status_code": 200,
+    "response": {
+      "message": "0 notifications marked as read"
+    }
+  },
+  {
+    "timestamp": "2026-01-05T11:07:05.462680",
+    "method": "GET",
+    "path": "/api/workflows/instances/",
+    "description": "List all workflow instances",
+    "status_code": 200,
+    "response": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    }
   }
 ]

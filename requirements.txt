@@ -4,7 +4,7 @@ djangorestframework==3.14.0
 djangorestframework-simplejwt==5.3.0
 
 # Database
-psycopg2-binary==2.9.9
+psycopg2-binary>=2.9.10
 
 # CORS and utilities
 django-cors-headers==4.3.1
@@ -26,6 +26,10 @@ gunicorn==21.2.0
 # Async tasks
 celery==5.3.6
 redis==5.0.1
+
+# AI Integration
+google-generativeai==0.3.2
+numpy==1.24.3
 
 # Build tools
 setuptools>=65.0.0

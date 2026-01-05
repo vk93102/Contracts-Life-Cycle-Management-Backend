@@ -1,0 +1,13 @@
+2026-01-05 16:40:15,046 - INFO - 🚀 COMPREHENSIVE ENDPOINT TEST SUITE STARTED
+2026-01-05 16:40:15,046 - INFO - Timestamp: 2026-01-05T16:40:15.046313
+2026-01-05 16:40:15,046 - INFO - Base URL: http://localhost:4000/api
+
+2026-01-05 16:40:15,046 - INFO - 
+================================================================================
+2026-01-05 16:40:15,046 - INFO - TEST: EMAIL SMTP CONFIGURATION
+2026-01-05 16:40:15,046 - INFO - ================================================================================
+2026-01-05 16:40:15,094 - ERROR - ❌ EMAIL TEST ERROR: Requested setting EMAIL_HOST, but settings are not configured. You must either define the environment variable DJANGO_SETTINGS_MODULE or call settings.configure() before accessing settings.
+2026-01-05 16:40:15,095 - INFO - 
+================================================================================
+2026-01-05 16:40:15,095 - INFO - TEST: AUTHENTICATION
+2026-01-05 16:40:15,095 - INFO - ================================================================================
