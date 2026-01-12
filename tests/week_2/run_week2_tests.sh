@@ -1,10 +1,3 @@
-#!/bin/bash
-
-# Week 2 - Complete API Endpoint Test Suite for Render
-# Tests: Contracts, Templates, Notifications, Workflows, Metadata, Documents, Repository
-# This script tests all core endpoints comprehensively
-
-# BASE_URL="http://127.0.0.1:8000"
 BASE_URL="https://clm-backend-at23.onrender.com"
 TIMESTAMP=$(date +%s)
 EMAIL="test_week2_${TIMESTAMP}@example.com"

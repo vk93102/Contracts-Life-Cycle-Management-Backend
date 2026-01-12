@@ -1,4 +1,4 @@
-BASE_URL="http://127.0.0.1:8000"
+BASE_URL="https://clm-backend-at23.onrender.com"
 TIMESTAMP=$(date +%s)
 EMAIL="test_reg_${TIMESTAMP}@example.com"
 PASSWORD="TestPassword123!"
