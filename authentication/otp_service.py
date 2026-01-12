@@ -1,10 +1,13 @@
 import os
 import secrets
+import logging
 from datetime import timedelta
 from django.utils import timezone
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 class OTPService:
     """Service for managing OTP generation and email sending"""
@@ -24,29 +27,31 @@ class OTPService:
         try:
             subject = "Your CLM Login OTP"
             message = f"""
-            Hello {user.first_name or user.email},
-            
-            Your one-time password (OTP) for CLM login is:
-            
-            {otp}
-            
-            This OTP is valid for {OTPService.OTP_VALIDITY_MINUTES} minutes.
-            
-            If you didn't request this, please ignore this email.
-            
-            Best regards,
-            CLM Team
+Hello {user.first_name or user.email},
+
+Your one-time password (OTP) for CLM login is:
+
+{otp}
+
+This OTP is valid for {OTPService.OTP_VALIDITY_MINUTES} minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+CLM Team
             """
             
-            send_mail(
+            result = send_mail(
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
                 [user.email],
                 fail_silently=False,
             )
+            logger.info(f"Login OTP sent to {user.email}, result: {result}")
             return True
         except Exception as e:
+            logger.error(f"Error sending login OTP to {user.email}: {str(e)}")
             print(f"Error sending login OTP: {e}")
             return False
     
@@ -56,31 +61,115 @@ class OTPService:
         try:
             subject = "Your CLM Password Reset OTP"
             message = f"""
-            Hello {user.first_name or user.email},
-            
-            Your one-time password (OTP) for password reset is:
-            
-            {otp}
-            
-            This OTP is valid for {OTPService.OTP_VALIDITY_MINUTES} minutes.
-            
-            If you didn't request this, please ignore this email and your password will remain unchanged.
-            
-            Best regards,
-            CLM Team
+Hello {user.first_name or user.email},
+
+Your one-time password (OTP) for password reset is:
+
+{otp}
+
+This OTP is valid for {OTPService.OTP_VALIDITY_MINUTES} minutes.
+
+If you didn't request this, please ignore this email and your password will remain unchanged.
+
+Best regards,
+CLM Team
             """
             
-            send_mail(
+            result = send_mail(
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
                 [user.email],
                 fail_silently=False,
             )
+            logger.info(f"Password reset OTP sent to {user.email}, result: {result}")
             return True
         except Exception as e:
+            logger.error(f"Error sending password reset OTP to {user.email}: {str(e)}")
             print(f"Error sending password reset OTP: {e}")
             return False
+    
+    @staticmethod
+    def send_welcome_email(user):
+        """Send welcome email to new user"""
+        try:
+            subject = "Welcome to CLM"
+            message = f"""
+Hello {user.first_name or user.email},
+
+Welcome to Contract Lifecycle Management (CLM) system!
+
+Your account has been successfully created. You can now log in with your email and password.
+
+Email: {user.email}
+
+If you have any questions, please contact our support team.
+
+Best regards,
+CLM Team
+            """
+            
+            result = send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
+            logger.info(f"Welcome email sent to {user.email}, result: {result}")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending welcome email to {user.email}: {str(e)}")
+            print(f"Error sending welcome email: {e}")
+            return False
+    
+    @staticmethod
+    def send_email_otp(email):
+        """Send OTP for email verification via email"""
+        try:
+            from .models import User
+            # Try to get user by email
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                return {'message': 'User not found', 'success': False}
+            
+            # Generate OTP
+            otp = OTPService.generate_otp()
+            user.login_otp = otp
+            user.otp_created_at = timezone.now()
+            user.otp_attempts = 0
+            user.save(update_fields=['login_otp', 'otp_created_at', 'otp_attempts'])
+            
+            subject = "Email Verification OTP"
+            message = f"""
+Hello {user.first_name or user.email},
+
+Your one-time password (OTP) for email verification is:
+
+{otp}
+
+This OTP is valid for {OTPService.OTP_VALIDITY_MINUTES} minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+CLM Team
+            """
+            
+            result = send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+            logger.info(f"Email verification OTP sent to {email}, result: {result}")
+            return {'message': f'OTP sent to {email}. Valid for {OTPService.OTP_VALIDITY_MINUTES} minutes', 'success': True}
+        except Exception as e:
+            logger.error(f"Error sending email OTP to {email}: {str(e)}")
+            print(f"Error sending email OTP: {e}")
+            return {'message': f'Error sending OTP: {str(e)}', 'success': False}
     
     @staticmethod
     def verify_otp(user, otp, otp_type='login'):

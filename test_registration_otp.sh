@@ -1,3 +1,7 @@
+#!/bin/bash
+
+# Test script to verify registration sends OTP
+
 BASE_URL="http://127.0.0.1:8000"
 TIMESTAMP=$(date +%s)
 EMAIL="test_reg_${TIMESTAMP}@example.com"

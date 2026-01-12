@@ -66,8 +66,15 @@ class RegisterView(APIView):
         user.set_password(password)
         user.save()
         
+        # Send welcome email
+        OTPService.send_welcome_email(user)
+        
+        # Send OTP for email verification
+        otp_result = OTPService.send_email_otp(user.email)
+        otp_message = otp_result.get('message', 'OTP sent to email')
+        
         refresh = RefreshToken.for_user(user)
-        return Response({'access': str(refresh.access_token), 'refresh': str(refresh), 'user': {'user_id': str(user.user_id), 'email': user.email}}, status=status.HTTP_201_CREATED)
+        return Response({'access': str(refresh.access_token), 'refresh': str(refresh), 'user': {'user_id': str(user.user_id), 'email': user.email, 'message': f'User registered successfully. {otp_message}'}}, status=status.HTTP_201_CREATED)
 
 
 class CurrentUserView(APIView):
