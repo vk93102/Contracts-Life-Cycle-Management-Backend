@@ -7,8 +7,12 @@ import json
 import logging
 from typing import List, Optional, Dict
 from django.conf import settings
-import voyageai
 import numpy as np
+
+try:
+    import voyageai  # type: ignore
+except Exception:  # pragma: no cover
+    voyageai = None
 
 logger = logging.getLogger(__name__)
 
@@ -88,13 +92,16 @@ class VoyageEmbeddingsService:
         self.client = None
         self.use_mock = False
         
-        if self.api_key:
+        if self.api_key and voyageai is not None:
             try:
                 self.client = voyageai.Client(api_key=self.api_key)
                 logger.info(f"Voyage AI client initialized with model: {self.MODEL}")
             except Exception as e:
                 logger.warning(f"Failed to initialize Voyage AI, using semantic mock: {str(e)}")
                 self.use_mock = True
+        elif self.api_key and voyageai is None:
+            logger.warning("Voyage API key is configured but 'voyageai' package is not installed; using semantic mock embeddings")
+            self.use_mock = True
         else:
             logger.info("No Voyage API key configured, using semantic mock embeddings")
             self.use_mock = True

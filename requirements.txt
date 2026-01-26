@@ -18,5 +18,10 @@ pdf2image==1.17.0
 pypdf==6.4.0
 requests==2.32.3
 Pillow==10.1.0
+pytesseract==0.3.10
+
+# Embeddings (Voyage Law-2 + similarity)
+numpy
+voyageai
 
 

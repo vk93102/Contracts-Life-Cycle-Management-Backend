@@ -23,7 +23,7 @@ from django.db import transaction, connection
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.utils import timezone
-from django.http import FileResponse, HttpResponse
+from django.http import FileResponse, HttpResponse, StreamingHttpResponse
 from datetime import datetime, timedelta
 import uuid
 import hashlib
@@ -687,6 +687,214 @@ class ContractViewSet(viewsets.ModelViewSet):
         contract.save(update_fields=['metadata', 'last_edited_at', 'last_edited_by', 'updated_at'])
 
         return Response(ContractDetailSerializer(contract).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='ai/generate-stream')
+    def ai_generate_stream(self, request, pk=None):
+        """Stream AI-generated contract edits as Server-Sent Events (SSE).
+
+        POST /api/v1/contracts/{id}/ai/generate-stream/
+
+        Body:
+          - prompt: string (required)
+          - current_text: string (optional; defaults to stored rendered_text)
+
+        Emits SSE events:
+          - event: delta, data: {"delta": "..."}
+          - event: done,  data: {"ok": true}
+          - event: error, data: {"error": "..."}
+        """
+
+        contract = self.get_object()
+        prompt = (request.data.get('prompt') or '').strip()
+        if not prompt:
+            return Response({'error': 'prompt is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        md = contract.metadata or {}
+        current_text = request.data.get('current_text')
+        if current_text is None:
+            current_text = md.get('rendered_text') or self._strip_html(md.get('rendered_html') or '')
+        if not isinstance(current_text, str):
+            return Response({'error': 'current_text must be a string'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Retrieve a few relevant clauses using Voyage Law-2 embeddings.
+        def _pick_relevant_clauses() -> list[dict]:
+            try:
+                from repository.embeddings_service import VoyageEmbeddingsService
+                import numpy as np
+
+                svc = VoyageEmbeddingsService()
+                query_emb = svc.embed_query(prompt) or svc.embed_text(prompt)
+                if not query_emb:
+                    return []
+
+                qs = Clause.objects.filter(
+                    tenant_id=request.user.tenant_id,
+                    status='published',
+                )
+                if contract.contract_type:
+                    qs = qs.filter(contract_type=contract.contract_type)
+                # Keep it bounded for latency.
+                items = list(qs.order_by('-updated_at')[:40])
+                if not items:
+                    return []
+
+                texts = [f"{c.name}\n\n{c.content}"[:8000] for c in items]
+                embs = svc.embed_batch(texts)
+
+                q = np.array(query_emb, dtype=np.float32)
+                qn = float(np.linalg.norm(q))
+                if qn <= 0:
+                    return []
+
+                scored: list[tuple[float, Clause]] = []
+                for clause, emb in zip(items, embs):
+                    if not emb:
+                        continue
+                    v = np.array(emb, dtype=np.float32)
+                    vn = float(np.linalg.norm(v))
+                    if vn <= 0:
+                        continue
+                    sim = float(np.dot(q, v) / (qn * vn))
+                    scored.append((sim, clause))
+
+                scored.sort(key=lambda x: x[0], reverse=True)
+                out = []
+                for sim, clause in scored[:5]:
+                    out.append(
+                        {
+                            'clause_id': clause.clause_id,
+                            'name': clause.name,
+                            'similarity': round(sim, 4),
+                            'content': clause.content,
+                        }
+                    )
+                return out
+            except Exception:
+                return []
+
+        relevant = _pick_relevant_clauses()
+
+        from django.conf import settings
+        api_key = (getattr(settings, 'GEMINI_API_KEY', '') or '').strip()
+        if not api_key:
+            return Response({'error': 'GEMINI_API_KEY is not configured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        model_name = getattr(settings, 'GEMINI_CONTRACT_EDIT_MODEL', None) or 'gemini-2.5-pro'
+
+        # Build a safe, bounded prompt.
+        clauses_block = ''
+        if relevant:
+            chunks = []
+            for c in relevant:
+                chunks.append(
+                    f"- [{c['clause_id']}] {c['name']} (sim={c['similarity']})\n{c['content']}"
+                )
+            clauses_block = "\n\n".join(chunks)[:12000]
+
+        base_text = (current_text or '')[:20000]
+        user_instruction = prompt[:4000]
+
+        generation_prompt = f"""
+You are a senior legal contract drafting assistant.
+
+Task:
+- Apply the user's instruction to the existing contract text.
+- Keep the contract coherent and legally styled.
+- Preserve headings/numbering where possible.
+- If the user asks to insert a clause, add it in the most appropriate section.
+- If the user asks to update a term (e.g., payment days), change it consistently everywhere.
+
+Output rules:
+- Return ONLY the full revised contract as plain text.
+- Do not include markdown fences, commentary, or JSON.
+
+User instruction:
+{user_instruction}
+
+Existing contract text:
+---
+{base_text}
+---
+
+Relevant clause library (optional):
+---
+{clauses_block or '(none)'}
+---
+""".strip()
+
+        def event_stream():
+            # Initial metadata event
+            try:
+                yield f"event: meta\ndata: {json.dumps({'model': model_name})}\n\n"
+            except Exception:
+                pass
+
+            try:
+                import google.generativeai as genai
+
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(model_name)
+
+                for chunk in model.generate_content(generation_prompt, stream=True):
+                    delta = getattr(chunk, 'text', None)
+                    if not delta:
+                        continue
+                    yield f"event: delta\ndata: {json.dumps({'delta': delta})}\n\n"
+
+                yield f"event: done\ndata: {json.dumps({'ok': True})}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp
+
+    @action(detail=False, methods=['post'], url_path='create-from-content')
+    def create_from_content(self, request):
+        """Create a draft contract from provided editor content.
+
+        POST /api/v1/contracts/create-from-content/
+        Body:
+          - title: string (required)
+          - contract_type: string (optional)
+          - rendered_text: string (optional)
+          - rendered_html: string (optional)
+        """
+
+        title = (request.data.get('title') or '').strip()
+        if not title:
+            return Response({'error': 'title is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        rendered_text = request.data.get('rendered_text', None)
+        rendered_html = request.data.get('rendered_html', None)
+        if rendered_text is not None and not isinstance(rendered_text, str):
+            return Response({'error': 'rendered_text must be a string'}, status=status.HTTP_400_BAD_REQUEST)
+        if rendered_html is not None and not isinstance(rendered_html, str):
+            return Response({'error': 'rendered_html must be a string'}, status=status.HTTP_400_BAD_REQUEST)
+        if rendered_text is None and rendered_html is None:
+            return Response({'error': 'rendered_text or rendered_html is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if rendered_text is None and rendered_html is not None:
+            rendered_text = self._strip_html(rendered_html)
+
+        contract_type = (request.data.get('contract_type') or '').strip() or None
+
+        contract = Contract.objects.create(
+            tenant_id=request.user.tenant_id,
+            title=title,
+            status='draft',
+            created_by=request.user.user_id,
+            contract_type=contract_type,
+            metadata={
+                'rendered_text': rendered_text or '',
+                'rendered_html': rendered_html or '',
+            },
+            last_edited_at=timezone.now(),
+            last_edited_by=request.user.user_id,
+        )
+
+        return Response(ContractDetailSerializer(contract).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='download-txt')
     def download_txt(self, request, pk=None):

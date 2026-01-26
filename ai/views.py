@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.http import StreamingHttpResponse
 from .models import AIInferenceModel, DraftGenerationTask, ClauseAnchor
 from .serializers import AIInferenceSerializer, DraftGenerationTaskSerializer, ClauseAnchorSerializer
 from .tasks import generate_draft_async
@@ -9,11 +10,13 @@ from .pii_protection import PIIScrubber, ScrubberAuditLog
 from django.utils import timezone
 import uuid
 import logging
+import json
 from repository.models import Document
 from repository.embeddings_service import VoyageEmbeddingsService
 import google.generativeai as genai
 from django.conf import settings
 import numpy as np
+from contracts.models import Clause
 
 logger = logging.getLogger(__name__)
 
@@ -208,4 +211,146 @@ class AIViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"Clause classification error: {e}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='generate/template-stream')
+    def generate_template_stream(self, request):
+        """Stream AI-generated template edits as Server-Sent Events (SSE).
+
+        POST /api/v1/ai/generate/template-stream/
+
+        Body:
+          - prompt: string (required)
+          - current_text: string (required)
+          - contract_type: string (optional)
+
+        Emits SSE events:
+          - event: delta, data: {"delta": "..."}
+          - event: done,  data: {"ok": true}
+          - event: error, data: {"error": "..."}
+        """
+
+        prompt = (request.data.get('prompt') or '').strip()
+        current_text = request.data.get('current_text')
+        contract_type = (request.data.get('contract_type') or '').strip() or None
+
+        if not prompt:
+            return Response({'error': 'prompt is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(current_text, str) or not current_text.strip():
+            return Response({'error': 'current_text is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (settings.GEMINI_API_KEY or '').strip():
+            return Response({'error': 'GEMINI_API_KEY is not configured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        model_name = getattr(settings, 'GEMINI_CONTRACT_EDIT_MODEL', None) or 'gemini-2.5-pro'
+
+        # Retrieve relevant clauses using Voyage Law-2.
+        def _pick_relevant_clauses() -> list[dict]:
+            try:
+                embeddings_service = VoyageEmbeddingsService()
+                query_embedding = embeddings_service.embed_query(prompt)
+                if not query_embedding:
+                    return []
+
+                qs = Clause.objects.filter(tenant_id=request.user.tenant_id, status='published')
+                if contract_type:
+                    qs = qs.filter(contract_type=contract_type)
+
+                items = list(qs.order_by('-updated_at')[:40])
+                if not items:
+                    return []
+
+                texts = [f"{c.name}\n\n{c.content}"[:8000] for c in items]
+                embeddings = embeddings_service.embed_batch(texts)
+
+                q = np.array(query_embedding, dtype=np.float32)
+                qn = float(np.linalg.norm(q))
+                if qn <= 0:
+                    return []
+
+                scored: list[tuple[float, Clause]] = []
+                for clause, emb in zip(items, embeddings):
+                    if not emb:
+                        continue
+                    v = np.array(emb, dtype=np.float32)
+                    vn = float(np.linalg.norm(v))
+                    if vn <= 0:
+                        continue
+                    sim = float(np.dot(q, v) / (qn * vn))
+                    scored.append((sim, clause))
+
+                scored.sort(key=lambda x: x[0], reverse=True)
+                out = []
+                for sim, clause in scored[:5]:
+                    out.append(
+                        {
+                            'clause_id': clause.clause_id,
+                            'name': clause.name,
+                            'similarity': round(sim, 4),
+                            'content': clause.content,
+                        }
+                    )
+                return out
+            except Exception:
+                return []
+
+        relevant = _pick_relevant_clauses()
+        clauses_block = ''
+        if relevant:
+            blocks = []
+            for c in relevant:
+                blocks.append(f"- [{c['clause_id']}] {c['name']} (sim={c['similarity']})\n{c['content']}")
+            clauses_block = "\n\n".join(blocks)[:12000]
+
+        base_text = (current_text or '')[:20000]
+        user_instruction = prompt[:4000]
+
+        generation_prompt = f"""
+You are a senior legal contract drafting assistant.
+
+Task:
+- Apply the user's instruction to the existing contract text.
+- Keep the contract coherent and legally styled.
+- Preserve headings/numbering where possible.
+- If the user asks to insert a clause, add it in the most appropriate section.
+- If the user asks to update a term, change it consistently everywhere.
+
+Output rules:
+- Return ONLY the full revised contract as plain text.
+- Do not include markdown fences, commentary, or JSON.
+
+User instruction:
+{user_instruction}
+
+Existing contract text:
+---
+{base_text}
+---
+
+Relevant clause library (optional):
+---
+{clauses_block or '(none)'}
+---
+""".strip()
+
+        def event_stream():
+            try:
+                yield f"event: meta\ndata: {json.dumps({'model': model_name})}\n\n"
+            except Exception:
+                pass
+
+            try:
+                model = genai.GenerativeModel(model_name)
+                for chunk in model.generate_content(generation_prompt, stream=True):
+                    delta = getattr(chunk, 'text', None)
+                    if not delta:
+                        continue
+                    yield f"event: delta\ndata: {json.dumps({'delta': delta})}\n\n"
+                yield f"event: done\ndata: {json.dumps({'ok': True})}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp
 

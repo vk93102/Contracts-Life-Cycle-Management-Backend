@@ -108,6 +108,38 @@ class R2StorageService:
             'content_type': content_type,
         }
 
+    def upload_review_contract_file(self, file_obj, tenant_id: str, user_id: str, filename: Optional[str] = None) -> Dict[str, Any]:
+        """Upload a contract intended for review/validation under a dedicated prefix."""
+        original_name = filename or getattr(file_obj, 'name', '') or 'review'
+        safe_name = self.sanitize_filename(original_name)
+        ext = safe_name.split('.')[-1].lower() if '.' in safe_name else ''
+        unique_id = str(uuid.uuid4())
+        r2_key = f"{tenant_id}/review_contracts/{user_id}/{unique_id}--{safe_name}"
+
+        content_type, _ = mimetypes.guess_type(safe_name)
+        if not content_type:
+            content_type = 'application/octet-stream'
+
+        self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=r2_key,
+            Body=file_obj.read(),
+            ContentType=content_type,
+            Metadata={
+                'tenant_id': str(tenant_id),
+                'user_id': str(user_id),
+                'original_filename': original_name,
+                'purpose': 'review_contract',
+                'file_ext': ext,
+            },
+        )
+
+        return {
+            'key': r2_key,
+            'filename': safe_name,
+            'content_type': content_type,
+        }
+
     def list_objects(self, prefix: str, max_keys: int = 200) -> List[Dict[str, Any]]:
         """List objects under a prefix."""
         try:
@@ -149,6 +181,15 @@ class R2StorageService:
             return url
         except ClientError as e:
             raise Exception(f"Failed to generate presigned URL: {str(e)}")
+
+    def get_file_bytes(self, r2_key: str) -> bytes:
+        """Download an object from R2 and return its bytes."""
+        try:
+            resp = self.client.get_object(Bucket=self.bucket_name, Key=r2_key)
+            body = resp.get('Body')
+            return body.read() if body else b''
+        except ClientError as e:
+            raise Exception(f"Failed to download file from R2: {str(e)}")
     
     def delete_file(self, r2_key):
         """
