@@ -2,6 +2,7 @@ import logging
 from io import BytesIO
 from datetime import timedelta
 import os
+import hashlib
 
 import re
 import textwrap
@@ -101,18 +102,28 @@ def _resolve_contract_pdf_r2_key(contract: Contract) -> str | None:
     return None
 
 
-def _get_contract_pdf_bytes_from_r2(*, contract: Contract) -> tuple[bytes, str]:
-    """Return (pdf_bytes, r2_key). Generates+uploads a PDF when missing."""
+def _get_contract_pdf_bytes_from_r2(*, contract: Contract, force_refresh: bool = False) -> tuple[bytes, str]:
+    """Return (pdf_bytes, r2_key).
+
+    When force_refresh=True, always regenerates the PDF from the latest stored
+    editor content and uploads it to R2, updating contract.document_r2_key.
+    """
     r2 = R2StorageService()
-    r2_key = _resolve_contract_pdf_r2_key(contract)
-    if r2_key:
-        pdf_bytes = r2.get_file_bytes(r2_key)
-        if pdf_bytes:
-            return pdf_bytes, r2_key
+
+    if not force_refresh:
+        r2_key = _resolve_contract_pdf_r2_key(contract)
+        if r2_key:
+            pdf_bytes = r2.get_file_bytes(r2_key)
+            if pdf_bytes:
+                return pdf_bytes, r2_key
 
     pdf_bytes = _generate_contract_pdf_bytes(contract)
-    filename = f"{(contract.title or 'Contract').strip().replace(' ', '_')}.pdf"
+    safe_title = (contract.title or 'Contract').strip().replace(' ', '_') or 'Contract'
+    ts = int(timezone.now().timestamp())
+    filename = f"{safe_title}_{contract.id}_{ts}.pdf"
     uploaded_key = r2.upload_file(ContentFile(pdf_bytes, name=filename), contract.tenant_id, filename)
+
+    # Persist the latest PDF location so subsequent operations use the real document.
     contract.document_r2_key = uploaded_key
     contract.save(update_fields=['document_r2_key', 'updated_at'])
     return pdf_bytes, uploaded_key
@@ -145,10 +156,14 @@ def _ensure_uploaded(*, contract: Contract, document_name: str, signers=None, si
         return contract.firma_signature_contract
 
     try:
-        pdf_bytes, source_r2_key = _get_contract_pdf_bytes_from_r2(contract=contract)
+        # Always regenerate+upload the latest PDF when starting a signing flow.
+        # This prevents sending stale/blank documents if an older PDF was previously cached in R2.
+        pdf_bytes, source_r2_key = _get_contract_pdf_bytes_from_r2(contract=contract, force_refresh=True)
     except Exception as e:
         logger.error('Failed to read contract PDF: %s', e, exc_info=True)
         raise RuntimeError('Failed to read contract file') from e
+
+    pdf_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
 
     # Convert signers to Firma format for upload
     recipients = []
@@ -181,7 +196,12 @@ def _ensure_uploaded(*, contract: Contract, document_name: str, signers=None, si
         status='draft',
         signing_order=signing_order,
         original_r2_key=source_r2_key,
-        signing_request_data={'document_name': str(document_name), 'recipients_count': len(recipients)},
+        signing_request_data={
+            'document_name': str(document_name),
+            'recipients_count': len(recipients),
+            'pdf_sha256': pdf_sha256,
+            'pdf_bytes_len': len(pdf_bytes),
+        },
     )
 
     FirmaSigningAuditLog.objects.create(
@@ -284,29 +304,51 @@ def firma_upload_contract(request):
             should_reset = force
             cleaned = _clean_signers(signers)
 
+            # Always refresh the latest PDF into R2 when the user presses the signing button.
+            # Then decide whether the vendor signing request must be reset (re-upload) to match.
+            latest_pdf_bytes = None
+            latest_pdf_sha = None
+            latest_source_r2_key = None
+            if cleaned:
+                try:
+                    latest_pdf_bytes, latest_source_r2_key = _get_contract_pdf_bytes_from_r2(contract=contract, force_refresh=True)
+                    latest_pdf_sha = hashlib.sha256(latest_pdf_bytes).hexdigest()
+                except Exception:
+                    # If we can't regenerate the PDF, don't reset; let downstream errors surface.
+                    pass
+
             if not should_reset and cleaned:
                 recipients_count = None
+                previous_pdf_sha = None
                 try:
                     if isinstance(existing.signing_request_data, dict):
                         recipients_count = existing.signing_request_data.get('recipients_count')
+                        previous_pdf_sha = existing.signing_request_data.get('pdf_sha256')
                 except Exception:
                     recipients_count = None
+                    previous_pdf_sha = None
 
                 # Heuristics for an auto-reset:
                 # - previous upload had 0 recipients recorded, OR
                 # - record is in a terminal/bad state, OR
-                # - vendor currently reports no recipients
+                # - contract content changed since last upload (prevents blank/stale vendor PDFs)
                 if recipients_count == 0 or existing.status in ('declined', 'failed'):
                     should_reset = True
+                elif previous_pdf_sha is None and latest_pdf_sha is not None:
+                    # Legacy signing requests (created before pdf_sha256 tracking) are risky:
+                    # they may point to a stale/blank vendor document. Reset once to guarantee
+                    # the vendor is using the latest PDF.
+                    should_reset = True
+                elif previous_pdf_sha and latest_pdf_sha and previous_pdf_sha != latest_pdf_sha:
+                    should_reset = True
                 else:
+                    # Optional vendor check: avoid resetting finished requests.
                     try:
                         service = _get_firma_service()
                         status_info = service.get_document_status(existing.firma_document_id)
-                        vendor_recipients = status_info.get('recipients') or []
-                        if not vendor_recipients:
-                            should_reset = True
+                        if bool(status_info.get('is_completed')):
+                            should_reset = False
                     except Exception:
-                        # Best-effort only; if vendor check fails, keep existing.
                         pass
 
             if not should_reset:
@@ -323,7 +365,10 @@ def firma_upload_contract(request):
                 )
 
             # Reset/re-upload in-place (keeps OneToOne relationship stable)
-            pdf_bytes, source_r2_key = _get_contract_pdf_bytes_from_r2(contract=contract)
+            if latest_pdf_bytes is not None and latest_source_r2_key:
+                pdf_bytes, source_r2_key = latest_pdf_bytes, latest_source_r2_key
+            else:
+                pdf_bytes, source_r2_key = _get_contract_pdf_bytes_from_r2(contract=contract, force_refresh=True)
 
             # Convert signers to Firma recipients
             recipients = []
@@ -357,6 +402,8 @@ def firma_upload_contract(request):
             if not new_document_id:
                 raise FirmaApiError('Firma did not return a document id')
 
+            pdf_sha256 = hashlib.sha256(pdf_bytes).hexdigest()
+
             # Clear local signer records and reset status
             existing.signers.all().delete()
             existing.firma_document_id = new_document_id
@@ -372,6 +419,8 @@ def firma_upload_contract(request):
                 'document_name': str(document_name),
                 'recipients_count': len(recipients),
                 'reset_from_firma_document_id': old_document_id,
+                'pdf_sha256': pdf_sha256,
+                'pdf_bytes_len': len(pdf_bytes),
             }
             existing.save()
 

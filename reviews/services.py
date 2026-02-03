@@ -47,18 +47,36 @@ def extract_text_from_bytes(file_bytes: bytes, filename: str) -> str:
 
     try:
         if name.endswith('.pdf'):
-            from PyPDF2 import PdfReader
             import io
 
-            reader = PdfReader(io.BytesIO(file_bytes))
-            out = []
-            for page in reader.pages:
+            def _read_with(reader_cls):
+                reader = reader_cls(io.BytesIO(file_bytes))
+                parts: list[str] = []
+                for page in getattr(reader, 'pages', []) or []:
+                    try:
+                        parts.append(page.extract_text() or '')
+                    except Exception:
+                        parts.append('')
+                return "\n".join(parts)
+
+            text = ''
+            # Prefer pypdf (installed) but fall back to PyPDF2.
+            try:
+                from pypdf import PdfReader as PyPdfReader
+
+                text = _read_with(PyPdfReader)
+            except Exception:
+                text = ''
+
+            if not (text or '').strip():
                 try:
-                    out.append(page.extract_text() or '')
+                    from PyPDF2 import PdfReader as PyPDF2Reader
+
+                    text = _read_with(PyPDF2Reader)
                 except Exception:
-                    out.append('')
-            text = "\n".join(out)
-            return text[:MAX_EXTRACT_CHARS]
+                    text = text or ''
+
+            return (text or '')[:MAX_EXTRACT_CHARS]
 
         if name.endswith('.docx'):
             import io
@@ -159,6 +177,35 @@ def generate_voyage_embedding(text: str) -> Optional[list]:
     if not api_key:
         return None
 
+    try:
+        payload = {
+            'model': 'voyage-law-2',
+            'input': [text[:8000] if text else ''],
+            'input_type': 'document',
+        }
+        resp = requests.post(
+            'https://api.voyageai.com/v1/embeddings',
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json=payload,
+            timeout=25,
+        )
+        if resp.status_code >= 400:
+            logger.warning('Voyage embedding failed: %s %s', resp.status_code, resp.text[:500])
+            return None
+
+        data = resp.json() or {}
+        emb = None
+        if isinstance(data, dict):
+            items = data.get('data')
+            if isinstance(items, list) and items:
+                emb = items[0].get('embedding') if isinstance(items[0], dict) else None
+        if isinstance(emb, list):
+            return emb
+        return None
+    except Exception as e:
+        logger.exception('Voyage embedding exception: %s', e)
+        return None
+
 
 def cosine_similarity(a: list, b: list) -> float:
     if not a or not b:
@@ -186,36 +233,6 @@ def similarity_to_percent(sim: float) -> int:
     # Embeddings typically yield cosine ~0..1. Clamp and convert.
     s = max(0.0, min(1.0, float(sim)))
     return int(round(s * 100))
-
-    try:
-        payload = {
-            'model': 'voyage-law-2',
-            'input': [text[:2000] if text else ''],
-            'input_type': 'document',
-        }
-        resp = requests.post(
-            'https://api.voyageai.com/v1/embeddings',
-            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-            json=payload,
-            timeout=25,
-        )
-        if resp.status_code >= 400:
-            logger.warning('Voyage embedding failed: %s %s', resp.status_code, resp.text[:500])
-            return None
-
-        data = resp.json() or {}
-        # Expected: {"data": [{"embedding": [...] }]}
-        emb = None
-        if isinstance(data, dict):
-            items = data.get('data')
-            if isinstance(items, list) and items:
-                emb = items[0].get('embedding') if isinstance(items[0], dict) else None
-        if isinstance(emb, list):
-            return emb
-        return None
-    except Exception as e:
-        logger.exception('Voyage embedding exception: %s', e)
-        return None
 
 
 EXTRACTION_SCHEMA_HINT = {

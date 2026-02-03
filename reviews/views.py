@@ -6,6 +6,7 @@ import uuid
 
 from django.http import HttpResponse, FileResponse
 from django.utils import timezone
+from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -118,6 +119,11 @@ class ReviewContractViewSet(viewsets.ModelViewSet):
             rc.save(update_fields=['status', 'error_message', 'updated_at'])
 
             text = extract_text_with_ocr_fallback(file_bytes, rc.original_filename)
+            if not (text or '').strip():
+                raise ValueError(
+                    'No text could be extracted from this document. '
+                    'If this is a scanned PDF, OCR is required (install tesseract) or configure GEMINI_API_KEY for OCR.'
+                )
             rc.extracted_text = text
 
             embedding = generate_voyage_embedding(text)
@@ -128,7 +134,23 @@ class ReviewContractViewSet(viewsets.ModelViewSet):
             if not analysis:
                 analysis = naive_fallback_extract(text)
 
+                # Surface a helpful warning when we are in basic-mode extraction.
+                if not (getattr(settings, 'GEMINI_API_KEY', '') or '').strip():
+                    rc.error_message = (
+                        'AI extraction is not configured (GEMINI_API_KEY is missing). '
+                        'Showing basic extraction only; results may be limited.'
+                    )
+
             analysis = normalize_analysis_shape(analysis or {})
+
+            # Attach lightweight debug metadata for the frontend/report.
+            analysis.setdefault('_meta', {})
+            if isinstance(analysis.get('_meta'), dict):
+                analysis['_meta'].update({
+                    'text_chars': len(text or ''),
+                    'gemini_configured': bool((getattr(settings, 'GEMINI_API_KEY', '') or '').strip()),
+                    'voyage_configured': bool((getattr(settings, 'VOYAGE_API_KEY', '') or '').strip()),
+                })
 
             tenant_id = str(getattr(rc, 'tenant_id', '') or '')
             if tenant_id:
@@ -140,7 +162,7 @@ class ReviewContractViewSet(viewsets.ModelViewSet):
             rc.review_text = review_text or ''
 
             rc.status = 'ready'
-            rc.save(update_fields=['status', 'extracted_text', 'embedding', 'analysis', 'review_text', 'updated_at'])
+            rc.save(update_fields=['status', 'error_message', 'extracted_text', 'embedding', 'analysis', 'review_text', 'updated_at'])
 
         except Exception as e:
             rc.status = 'failed'
