@@ -1,0 +1,38 @@
+{
+  "signature_fields_config": {
+    "fields": [
+      {
+        "label": "Signature 1",
+        "type": "signature",
+        "page_number": 1,
+        "position": {
+          "x": 10.0,
+          "y": 80.0,
+          "width": 30.0,
+          "height": 8.0
+        },
+        "required": true,
+        "recipient_index": 0
+      },
+      {
+        "label": "Signature 2",
+        "type": "signature",
+        "page_number": 1,
+        "position": {
+          "x": 10.0,
+          "y": 68.0,
+          "width": 30.0,
+          "height": 8.0
+        },
+        "required": true,
+        "recipient_index": 1
+      }
+    ],
+    "auto_stack": false,
+    "source": "drag_drop_ui",
+    "stack_spacing": 12
+  },
+  "signature_fields_updated_at": "2026-02-06T11:43:38.260968+00:00",
+  "signature_fields_updated_by_id": "39f3f02e-ceb3-4f36-a057-3af7c6c9c395",
+  "signature_fields_updated_by_email": "suhaib96886@gmail.com"
+}

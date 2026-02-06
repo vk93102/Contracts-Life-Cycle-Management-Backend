@@ -159,30 +159,38 @@ def _resolve_contract_pdf_r2_key(contract: Contract) -> str | None:
 
 
 
-def _get_contract_pdf_bytes_from_r2(*, contract: Contract, force_refresh: bool = False) -> tuple[bytes, str]:
+def _get_contract_pdf_bytes_from_r2(*, contract: Contract, force_refresh: bool = False) -> tuple[bytes, str | None]:
    """Return (pdf_bytes, r2_key).
 
+   If Cloudflare R2 is not configured, falls back to generating the PDF in-memory
+   and returns (pdf_bytes, None).
 
-   When force_refresh=True, always regenerates the PDF from the latest stored
-   editor content and uploads it to R2, updating contract.document_r2_key.
+   When force_refresh=True and R2 is configured, regenerates the PDF from the latest
+   stored editor content and uploads it to R2, updating contract.document_r2_key.
    """
-   r2 = R2StorageService()
 
+   r2: R2StorageService | None = None
+   try:
+       r2 = R2StorageService()
+   except Exception:
+       r2 = None
 
-   if not force_refresh:
+   if r2 is not None and not force_refresh:
        r2_key = _resolve_contract_pdf_r2_key(contract)
        if r2_key:
            pdf_bytes = r2.get_file_bytes(r2_key)
            if pdf_bytes:
                return pdf_bytes, r2_key
 
-
    pdf_bytes = _generate_contract_pdf_bytes(contract)
+
+   if r2 is None:
+       return pdf_bytes, None
+
    safe_title = (contract.title or 'Contract').strip().replace(' ', '_') or 'Contract'
    ts = int(timezone.now().timestamp())
    filename = f"{safe_title}_{contract.id}_{ts}.pdf"
    uploaded_key = r2.upload_file(ContentFile(pdf_bytes, name=filename), contract.tenant_id, filename)
-
 
    # Persist the latest PDF location so subsequent operations use the real document.
    contract.document_r2_key = uploaded_key
@@ -312,9 +320,12 @@ def _generate_signature_fields(contract: Contract, signers: list, signing_order:
        first_name = name_parts[0] if name_parts else 'Signer'
        last_name = name_parts[1] if len(name_parts) > 1 else f'{idx + 1}'
       
-       temp_id = f"temp_signer_{idx + 1}"
+       # Firma expects deterministic temporary recipient IDs (temp_*) during request creation.
+       # These will be converted by Firma into real UUIDs internally.
+       temp_id = f"temp_{idx + 1}"
       
        # Create recipient
+       # Firma is strict: recipients must include first_name, email, designation, and order.
        recipient = {
            'id': temp_id,
            'first_name': first_name,
@@ -323,8 +334,10 @@ def _generate_signature_fields(contract: Contract, signers: list, signing_order:
            'designation': 'Signer',
        }
        if signing_order == 'sequential':
-           # For parallel signing, omit ordering entirely (some vendors treat 0 as invalid).
            recipient['order'] = idx + 1
+       else:
+           # Parallel signing: same order for all signers.
+           recipient['order'] = 1
        recipients.append(recipient)
       
        # Determine signature field position for this signer
@@ -1047,12 +1060,14 @@ def firma_invite_all(request):
            record.expires_at = None
            record.last_status_check_at = None
            record.executed_r2_key = None
-           record.original_r2_key = source_r2_key
+           if source_r2_key:
+               record.original_r2_key = source_r2_key
            record.signing_request_data = {
                'document_name': str(document_name),
                'recipients_count': len(recipients),
                'fields_count': len(fields),
                'reset_from_firma_document_id': old_document_id,
+               'source_r2_key': source_r2_key,
                'pdf_sha256': pdf_sha256,
                'pdf_bytes_len': len(pdf_bytes),
            }
@@ -1072,11 +1087,12 @@ def firma_invite_all(request):
                firma_document_id=new_document_id,
                status='draft',
                signing_order=signing_order,
-               original_r2_key=source_r2_key,
+               original_r2_key=source_r2_key or None,
                signing_request_data={
                    'document_name': str(document_name),
                    'recipients_count': len(recipients),
                    'fields_count': len(fields),
+                   'source_r2_key': source_r2_key,
                    'pdf_sha256': pdf_sha256,
                    'pdf_bytes_len': len(pdf_bytes),
                },
