@@ -6,10 +6,10 @@
         "type": "signature",
         "page_number": 1,
         "position": {
-          "x": 10.0,
-          "y": 80.0,
-          "width": 30.0,
-          "height": 8.0
+          "x": 13.250475677431886,
+          "y": 52.968988460839405,
+          "width": 27.342256214149142,
+          "height": 3.5450516986706058
         },
         "required": true,
         "recipient_index": 0
@@ -19,10 +19,10 @@
         "type": "signature",
         "page_number": 1,
         "position": {
-          "x": 10.0,
-          "y": 68.0,
-          "width": 30.0,
-          "height": 8.0
+          "x": 14.399908879063098,
+          "y": 46.28262766354897,
+          "width": 35.94646271510516,
+          "height": 3.5450516986706058
         },
         "required": true,
         "recipient_index": 1
@@ -32,7 +32,7 @@
     "source": "drag_drop_ui",
     "stack_spacing": 12
   },
-  "signature_fields_updated_at": "2026-02-06T11:43:38.260968+00:00",
+  "signature_fields_updated_at": "2026-02-06T18:31:22.165888+00:00",
   "signature_fields_updated_by_id": "39f3f02e-ceb3-4f36-a057-3af7c6c9c395",
   "signature_fields_updated_by_email": "suhaib96886@gmail.com"
 }

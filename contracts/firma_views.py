@@ -4,6 +4,9 @@ from datetime import timedelta
 import os
 import hashlib
 import json
+import time
+from queue import Empty, Queue
+from threading import Lock
 
 
 import re
@@ -12,7 +15,7 @@ import textwrap
 
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
-from django.http import FileResponse
+from django.http import FileResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -1386,8 +1389,275 @@ def firma_get_executed_document(request, contract_id: str):
    filename = f"signed_contract_{contract_id}.pdf"
    return FileResponse(pdf_file, as_attachment=True, filename=filename, content_type='application/pdf')
 
+_FIRMA_STREAM_LOCK = Lock()
+_FIRMA_STREAMS: dict[str, set[Queue]] = {}
+
+def _firma_stream_publish(contract_id: str, payload: dict) -> None:
+   try:
+       cid = str(contract_id)
+       if not cid:
+           return
+       with _FIRMA_STREAM_LOCK:
+           subscribers = list(_FIRMA_STREAMS.get(cid) or [])
+       if not subscribers:
+           return
+       for q in subscribers:
+           try:
+               q.put_nowait(payload)
+           except Exception:
+               # best-effort
+               pass
+   except Exception:
+       return
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def firma_get_signing_request_details(request, contract_id: str):
+   record = get_object_or_404(FirmaSignatureContract, contract_id=contract_id)
+   try:
+       service = _get_firma_service()
+       data = service.get_signing_request_details(record.firma_document_id)
+       return Response({'success': True, 'contract_id': str(contract_id), 'signing_request': data}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+   except Exception as e:
+       logger.error('Firma details failed: %s', e, exc_info=True)
+       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def firma_get_signing_request_reminders(request, contract_id: str):
+   record = get_object_or_404(FirmaSignatureContract, contract_id=contract_id)
+   try:
+       service = _get_firma_service()
+       data = service.get_reminders(record.firma_document_id)
+       return Response({'success': True, 'contract_id': str(contract_id), 'reminders': data}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+   except Exception as e:
+       logger.error('Firma reminders failed: %s', e, exc_info=True)
+       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def firma_webhooks(request):
+   service = _get_firma_service()
+   try:
+       if request.method == 'GET':
+           page = int(request.query_params.get('page') or 1)
+           page_size = int(request.query_params.get('page_size') or 50)
+           sort_by = str(request.query_params.get('sort_by') or 'created_on')
+           sort_order = str(request.query_params.get('sort_order') or 'desc')
+           data = service.list_webhooks(page=page, page_size=page_size, sort_by=sort_by, sort_order=sort_order)
+           return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+
+       url = str(request.data.get('url') or '').strip()
+       events = request.data.get('events') or []
+       if not url:
+           return Response({'error': 'url is required'}, status=status.HTTP_400_BAD_REQUEST)
+       if not isinstance(events, list) or not all(isinstance(x, str) and x.strip() for x in events):
+           return Response({'error': 'events must be a list of strings'}, status=status.HTTP_400_BAD_REQUEST)
+
+       data = service.create_webhook(url=url, events=[str(x).strip() for x in events])
+       return Response({'success': True, 'webhook': data}, status=status.HTTP_201_CREATED)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+   except Exception as e:
+       logger.error('Firma webhooks failed: %s', e, exc_info=True)
+       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def firma_webhook_detail(request, webhook_id: str):
+   service = _get_firma_service()
+   try:
+       if request.method == 'GET':
+           data = service.get_webhook(webhook_id)
+           return Response({'success': True, 'webhook': data}, status=status.HTTP_200_OK)
+
+       if request.method == 'DELETE':
+           data = service.delete_webhook(webhook_id)
+           return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+
+       url = str(request.data.get('url') or '').strip()
+       events = request.data.get('events') or []
+       if not url:
+           return Response({'error': 'url is required'}, status=status.HTTP_400_BAD_REQUEST)
+       if not isinstance(events, list) or not all(isinstance(x, str) and x.strip() for x in events):
+           return Response({'error': 'events must be a list of strings'}, status=status.HTTP_400_BAD_REQUEST)
+
+       data = service.update_webhook(webhook_id, url=url, events=[str(x).strip() for x in events])
+       return Response({'success': True, 'webhook': data}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+   except Exception as e:
+       logger.error('Firma webhook detail failed: %s', e, exc_info=True)
+       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def firma_webhook_secret_status(request):
+   try:
+       service = _get_firma_service()
+       data = service.webhook_secret_status()
+       return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+   except Exception as e:
+       logger.error('Firma webhook secret-status failed: %s', e, exc_info=True)
+       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def firma_webhook_receive(request):
+   """Vendor callback endpoint.
+
+   For production, configure Firma webhooks to point here.
+   Optional shared-secret check: set FIRMA_WEBHOOK_SHARED_SECRET and send it in header `X-Firma-Webhook-Secret`.
+   """
+   shared = (os.getenv('FIRMA_WEBHOOK_SHARED_SECRET') or '').strip()
+   if shared:
+       provided = str(request.headers.get('X-Firma-Webhook-Secret') or '').strip()
+       if not provided or provided != shared:
+           return Response({'error': 'unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+
+   payload = request.data if isinstance(request.data, (dict, list)) else {}
+   signing_request_id = None
+   if isinstance(payload, dict):
+       # Try common keys first.
+       signing_request_id = (
+           payload.get('companies_workspaces_signing_requests_id')
+           or payload.get('signing_request_id')
+           or payload.get('signing_request')
+           or payload.get('signing_requests_id')
+           or payload.get('signing_request_user_id')
+           or payload.get('id')
+       )
+       # Some providers nest the object.
+       if isinstance(signing_request_id, dict):
+           signing_request_id = signing_request_id.get('id') or signing_request_id.get('signing_request_id')
+       # Some payloads include a `data` wrapper.
+       if not signing_request_id and isinstance(payload.get('data'), dict):
+           d = payload.get('data')
+           signing_request_id = d.get('companies_workspaces_signing_requests_id') or d.get('signing_request_id') or d.get('id')
+   signing_request_id = str(signing_request_id or '').strip()
+
+   record = None
+   if signing_request_id:
+       record = FirmaSignatureContract.objects.filter(firma_document_id=signing_request_id).select_related('contract').first()
+
+   if record:
+       try:
+           FirmaSigningAuditLog.objects.create(
+               firma_signature_contract=record,
+               event='webhook',
+               message='Firma webhook event received',
+               old_status=record.status,
+               new_status=record.status,
+               firma_response={'payload': payload},
+           )
+       except Exception:
+           pass
+
+       _firma_stream_publish(str(record.contract_id), {'type': 'firma_webhook', 'payload': payload, 'ts': int(time.time())})
+
+   return Response({'success': True}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def firma_webhook_stream(request, contract_id: str):
+   """Server-Sent Events stream for the UI to get near-real-time notifications."""
+   cid = str(contract_id)
+   q: Queue = Queue(maxsize=200)
+
+   with _FIRMA_STREAM_LOCK:
+       _FIRMA_STREAMS.setdefault(cid, set()).add(q)
+
+   def gen():
+       try:
+           yield 'event: ready\ndata: {}\n\n'
+           while True:
+               try:
+                   item = q.get(timeout=25)
+                   yield f"event: firma\ndata: {json.dumps(item)}\n\n"
+               except Empty:
+                   yield ': keepalive\n\n'
+       finally:
+           with _FIRMA_STREAM_LOCK:
+               try:
+                   subs = _FIRMA_STREAMS.get(cid)
+                   if subs and q in subs:
+                       subs.remove(q)
+                   if subs is not None and len(subs) == 0:
+                       _FIRMA_STREAMS.pop(cid, None)
+               except Exception:
+                   pass
+
+   resp = StreamingHttpResponse(gen(), content_type='text/event-stream')
+   resp['Cache-Control'] = 'no-cache'
+   return resp
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def firma_generate_template_token(request):
+   tid = str(request.data.get('companies_workspaces_templates_id') or '').strip()
+   if not tid:
+       return Response({'error': 'companies_workspaces_templates_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+   try:
+       service = _get_firma_service()
+       data = service.generate_template_token(companies_workspaces_templates_id=tid)
+       return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def firma_revoke_template_token(request):
+   jwt_id = str(request.data.get('jwt_id') or '').strip()
+   if not jwt_id:
+       return Response({'error': 'jwt_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+   try:
+       service = _get_firma_service()
+       data = service.revoke_template_token(jwt_id=jwt_id)
+       return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def firma_jwt_generate_signing_request(request):
+   rid = str(request.data.get('companies_workspaces_signing_requests_id') or '').strip()
+   if not rid:
+       return Response({'error': 'companies_workspaces_signing_requests_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+   try:
+       service = _get_firma_service()
+       data = service.jwt_generate_signing_request(companies_workspaces_signing_requests_id=rid)
+       return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def firma_jwt_revoke_signing_request(request):
+   jwt_id = str(request.data.get('jwt_id') or '').strip()
+   if not jwt_id:
+       return Response({'error': 'jwt_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+   try:
+       service = _get_firma_service()
+       data = service.jwt_revoke_signing_request(jwt_id=jwt_id)
+       return Response({'success': True, **(data or {})}, status=status.HTTP_200_OK)
+   except FirmaApiError as e:
+       return Response({'error': str(e), 'details': e.response_text}, status=status.HTTP_502_BAD_GATEWAY)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

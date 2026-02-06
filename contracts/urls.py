@@ -79,6 +79,20 @@ urlpatterns = [
     path('firma/esign/signing-url/<str:contract_id>/', firma_views.firma_get_signing_url, name='firma_get_signing_url'),
     path('firma/esign/status/<str:contract_id>/', firma_views.firma_check_status, name='firma_check_status'),
     path('firma/esign/executed/<str:contract_id>/', firma_views.firma_get_executed_document, name='firma_get_executed_document'),
+    path('firma/esign/details/<str:contract_id>/', firma_views.firma_get_signing_request_details, name='firma_get_signing_request_details'),
+    path('firma/esign/reminders/<str:contract_id>/', firma_views.firma_get_signing_request_reminders, name='firma_get_signing_request_reminders'),
+
+    path('firma/webhooks/', firma_views.firma_webhooks, name='firma_webhooks'),
+    path('firma/webhooks/<str:webhook_id>/', firma_views.firma_webhook_detail, name='firma_webhook_detail'),
+    path('firma/webhooks/secret-status/', firma_views.firma_webhook_secret_status, name='firma_webhook_secret_status'),
+    # Vendor callback (no auth) + authenticated realtime stream for UI.
+    path('firma/webhooks/receive/', firma_views.firma_webhook_receive, name='firma_webhook_receive'),
+    path('firma/webhooks/stream/<str:contract_id>/', firma_views.firma_webhook_stream, name='firma_webhook_stream'),
+
+    path('firma/jwt/template/generate/', firma_views.firma_generate_template_token, name='firma_generate_template_token'),
+    path('firma/jwt/template/revoke/', firma_views.firma_revoke_template_token, name='firma_revoke_template_token'),
+    path('firma/jwt/signing-request/generate/', firma_views.firma_jwt_generate_signing_request, name='firma_jwt_generate_signing_request'),
+    path('firma/jwt/signing-request/revoke/', firma_views.firma_jwt_revoke_signing_request, name='firma_jwt_revoke_signing_request'),
     path('firma/debug/config/', firma_views.firma_debug_config, name='firma_debug_config'),
     path('firma/debug/connectivity/', firma_views.firma_debug_connectivity, name='firma_debug_connectivity'),
     

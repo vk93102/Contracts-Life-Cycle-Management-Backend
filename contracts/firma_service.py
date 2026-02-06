@@ -28,6 +28,16 @@ class FirmaConfig:
     status_path: str
     users_path: str
     download_path: str
+    reminders_path: str
+
+    webhooks_path: str
+    webhook_detail_path: str
+    webhook_secret_status_path: str
+
+    generate_template_token_path: str
+    revoke_template_token_path: str
+    jwt_generate_signing_request_path: str
+    jwt_revoke_signing_request_path: str
 
     # Auth header customization
     auth_header_name: str
@@ -59,6 +69,16 @@ def load_firma_config() -> FirmaConfig:
         status_path=(os.getenv('FIRMA_STATUS_PATH') or '/functions/v1/signing-request-api/signing-requests/{document_id}').strip(),
         users_path=(os.getenv('FIRMA_USERS_PATH') or '/functions/v1/signing-request-api/signing-requests/{document_id}/users').strip(),
         download_path=(os.getenv('FIRMA_DOWNLOAD_PATH') or '/functions/v1/signing-request-api/signing-requests/{document_id}/download').strip(),
+        reminders_path=(os.getenv('FIRMA_REMINDERS_PATH') or '/functions/v1/signing-request-api/signing-requests/{document_id}/reminders').strip(),
+
+        webhooks_path=(os.getenv('FIRMA_WEBHOOKS_PATH') or '/functions/v1/signing-request-api/webhooks').strip(),
+        webhook_detail_path=(os.getenv('FIRMA_WEBHOOK_DETAIL_PATH') or '/functions/v1/signing-request-api/webhooks/{webhook_id}').strip(),
+        webhook_secret_status_path=(os.getenv('FIRMA_WEBHOOK_SECRET_STATUS_PATH') or '/functions/v1/signing-request-api/webhooks/secret-status').strip(),
+
+        generate_template_token_path=(os.getenv('FIRMA_GENERATE_TEMPLATE_TOKEN_PATH') or '/functions/v1/signing-request-api/generate-template-token').strip(),
+        revoke_template_token_path=(os.getenv('FIRMA_REVOKE_TEMPLATE_TOKEN_PATH') or '/functions/v1/signing-request-api/revoke-template-token').strip(),
+        jwt_generate_signing_request_path=(os.getenv('FIRMA_JWT_GENERATE_SIGNING_REQUEST_PATH') or '/functions/v1/signing-request-api/jwt/generate-signing-request').strip(),
+        jwt_revoke_signing_request_path=(os.getenv('FIRMA_JWT_REVOKE_SIGNING_REQUEST_PATH') or '/functions/v1/signing-request-api/jwt/revoke-signing-request').strip(),
         auth_header_name=(os.getenv('FIRMA_AUTH_HEADER') or 'Authorization').strip(),
         auth_header_value_prefix=(os.getenv('FIRMA_AUTH_PREFIX') or 'Bearer ').strip(),
         timeout_seconds=int(os.getenv('FIRMA_TIMEOUT_SECONDS') or '30'),
@@ -363,6 +383,133 @@ class FirmaAPIService:
             'created_at': status_data.get('created_at'),
             'completed_at': status_data.get('completed_at'),
         }
+
+    def get_signing_request_details(self, document_id: str) -> Dict[str, Any]:
+        """Fetch the raw signing-request object (includes vendor certificate/status fields)."""
+        if self.config.mock_mode:
+            return {
+                'id': document_id,
+                'status': 'sent',
+                'certificate': {'generated': False, 'generated_on': None, 'has_error': False},
+            }
+
+        url = self._url(self.config.status_path.format(document_id=document_id))
+        resp = self._request('GET', url)
+        return resp.json()
+
+    def get_reminders(self, document_id: str) -> Any:
+        """Fetch reminders for a signing request."""
+        if self.config.mock_mode:
+            return []
+
+        url = self._url(self.config.reminders_path.format(document_id=document_id))
+        resp = self._request('GET', url)
+        return resp.json()
+
+    # ===== Webhooks =====
+    def list_webhooks(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: str = 'created_on',
+        sort_order: str = 'desc',
+    ) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {
+                'results': [],
+                'pagination': {'current_page': 1, 'page_size': page_size, 'total_count': 0, 'total_pages': 0},
+            }
+
+        qs = f"?page={int(page)}&page_size={int(page_size)}&sort_by={sort_by}&sort_order={sort_order}"
+        url = self._url(self.config.webhooks_path + qs)
+        resp = self._request('GET', url)
+        return resp.json()
+
+    def create_webhook(self, *, url: str, events: List[str]) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'id': f'mock_webhook_{uuid.uuid4().hex}', 'url': url, 'events': events, 'enabled': True}
+
+        api_url = self._url(self.config.webhooks_path)
+        resp = self._request('POST', api_url, json={'url': url, 'events': events})
+        return resp.json()
+
+    def get_webhook(self, webhook_id: str) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'id': webhook_id, 'url': 'http://localhost/mock', 'events': [], 'enabled': True}
+
+        api_url = self._url(self.config.webhook_detail_path.format(webhook_id=webhook_id))
+        resp = self._request('GET', api_url)
+        return resp.json()
+
+    def update_webhook(self, webhook_id: str, *, url: str, events: List[str]) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'id': webhook_id, 'url': url, 'events': events, 'enabled': True}
+
+        api_url = self._url(self.config.webhook_detail_path.format(webhook_id=webhook_id))
+        resp = self._request('PUT', api_url, json={'url': url, 'events': events})
+        return resp.json()
+
+    def delete_webhook(self, webhook_id: str) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'message': 'Webhook deleted successfully', 'webhook_id': webhook_id}
+
+        api_url = self._url(self.config.webhook_detail_path.format(webhook_id=webhook_id))
+        resp = self._request('DELETE', api_url)
+        try:
+            return resp.json()
+        except Exception:
+            return {'message': (resp.text or '').strip() or 'deleted', 'webhook_id': webhook_id}
+
+    def webhook_secret_status(self) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'has_secret': False}
+
+        api_url = self._url(self.config.webhook_secret_status_path)
+        resp = self._request('GET', api_url)
+        return resp.json()
+
+    # ===== JWT helpers =====
+    def generate_template_token(self, *, companies_workspaces_templates_id: str) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {
+                'token': f'mock_token_{uuid.uuid4().hex}',
+                'expires_at': None,
+                'jwt_record_id': f'mock_jwt_{uuid.uuid4().hex}',
+            }
+
+        api_url = self._url(self.config.generate_template_token_path)
+        resp = self._request('POST', api_url, json={'companies_workspaces_templates_id': companies_workspaces_templates_id})
+        return resp.json()
+
+    def revoke_template_token(self, *, jwt_id: str) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'message': 'JWT revoked successfully', 'jwt_id': jwt_id}
+
+        api_url = self._url(self.config.revoke_template_token_path)
+        resp = self._request('POST', api_url, json={'jwt_id': jwt_id})
+        return resp.json()
+
+    def jwt_generate_signing_request(self, *, companies_workspaces_signing_requests_id: str) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {
+                'jwt': f'mock_jwt_{uuid.uuid4().hex}',
+                'jwt_id': f'mock_jwt_id_{uuid.uuid4().hex}',
+                'expires_at': None,
+                'signing_request_id': companies_workspaces_signing_requests_id,
+            }
+
+        api_url = self._url(self.config.jwt_generate_signing_request_path)
+        resp = self._request('POST', api_url, json={'companies_workspaces_signing_requests_id': companies_workspaces_signing_requests_id})
+        return resp.json()
+
+    def jwt_revoke_signing_request(self, *, jwt_id: str) -> Dict[str, Any]:
+        if self.config.mock_mode:
+            return {'message': 'JWT revoked successfully', 'jwt_id': jwt_id}
+
+        api_url = self._url(self.config.jwt_revoke_signing_request_path)
+        resp = self._request('POST', api_url, json={'jwt_id': jwt_id})
+        return resp.json()
 
     def download_document(self, document_id: str) -> bytes:
         if self.config.mock_mode:
