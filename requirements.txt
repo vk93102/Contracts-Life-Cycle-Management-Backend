@@ -20,6 +20,16 @@ requests==2.32.3
 Pillow==10.1.0
 pytesseract==0.3.10
 
+# Observability
+prometheus-client==0.20.0
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+opentelemetry-exporter-otlp==1.29.0
+opentelemetry-instrumentation==0.50b0
+opentelemetry-instrumentation-django==0.50b0
+opentelemetry-instrumentation-requests==0.50b0
+opentelemetry-instrumentation-psycopg2==0.50b0
+
 # PDF/HTML templating
 Jinja2==3.1.4
 

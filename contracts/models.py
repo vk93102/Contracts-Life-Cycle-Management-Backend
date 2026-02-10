@@ -143,6 +143,7 @@ class Contract(models.Model):
         indexes = [
             models.Index(fields=['tenant_id', 'status']),
             models.Index(fields=['tenant_id', 'created_at']),
+            models.Index(fields=['tenant_id', 'contract_type'], name='ct_tenant_type_idx'),
         ]
     
     def __str__(self):

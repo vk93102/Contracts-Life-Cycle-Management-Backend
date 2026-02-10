@@ -19,7 +19,17 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-dev-key-12345')
 
 DEBUG = os.getenv('DEBUG', 'False').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
 
-ALLOWED_HOSTS = ['*']
+# When enabled, refuse to run in production with placeholder secrets.
+SECURITY_STRICT = os.getenv('SECURITY_STRICT', 'False').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
+if DEBUG:
+    ALLOWED_HOSTS = ['*']
+else:
+    _hosts = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').strip()
+    ALLOWED_HOSTS = [h.strip() for h in _hosts.split(',') if h.strip()]
+
+if SECURITY_STRICT and (not DEBUG) and SECRET_KEY == 'django-insecure-dev-key-12345':
+    raise RuntimeError('DJANGO_SECRET_KEY must be set when SECURITY_STRICT is enabled')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -57,9 +67,13 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'clm_backend.middleware.RequestIdMiddleware',
+    'clm_backend.middleware.SlowQueryLoggingMiddleware',
     'clm_backend.middleware.TenantIsolationMiddleware',
+    'clm_backend.middleware.MetricsMiddleware',
     'clm_backend.middleware.AuditLoggingMiddleware',
     'clm_backend.middleware.PIIProtectionLoggingMiddleware',
+    'clm_backend.middleware.SecurityHeadersMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
@@ -225,6 +239,22 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'clm_backend.throttling.TenantUserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        # Applies to AnonRateThrottle
+        'anon': os.getenv('THROTTLE_ANON', '60/min'),
+        # Applies to TenantUserRateThrottle
+        'tenant_user': os.getenv('THROTTLE_TENANT_USER', '600/min'),
+        # Scoped throttles (set `throttle_scope = ...` on views)
+        'auth': os.getenv('THROTTLE_AUTH', '10/min'),
+        'ai': os.getenv('THROTTLE_AI', '30/min'),
+        'uploads': os.getenv('THROTTLE_UPLOADS', '20/min'),
+        'firma': os.getenv('THROTTLE_FIRMA', '120/min'),
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
 }
@@ -297,15 +327,70 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 VOYAGE_API_KEY = os.getenv('VOYAGE_API_KEY', '')
 VOYAGE_CONTEXT = os.getenv('VOYAGE_CONTEXT', '')  # Fallback for compatibility
 
+# ---------------------------------------------------------------------------
+# Security hardening (production-safe defaults)
+# ---------------------------------------------------------------------------
+
+# If behind a proxy/load balancer (Render, Cloudflare, etc), respect forwarded proto.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Enable these in production via env flags.
+SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.getenv('SECURE_REFERRER_POLICY', 'same-origin')
+
+# HSTS (only effective over HTTPS; keep disabled by default for local dev).
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0' if DEBUG else '31536000'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'True').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'True').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
+_csrf_trusted = os.getenv('CSRF_TRUSTED_ORIGINS', '').strip()
+if _csrf_trusted:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_trusted.split(',') if o.strip()]
+
+# ---------------------------------------------------------------------------
+# Cache (used by DRF throttling) — Redis recommended in production
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# DB bottleneck visibility
+# ---------------------------------------------------------------------------
+
+# Logs any individual DB query slower than this threshold (milliseconds).
+# Use in staging/load-test runs, not as a permanent production default.
+DB_SLOW_QUERY_MS = int(os.getenv('DB_SLOW_QUERY_MS', '0') or '0')
+
+REDIS_URL = (os.getenv('REDIS_URL', '') or os.getenv('CACHE_REDIS_URL', '')).strip()
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'TIMEOUT': int(os.getenv('CACHE_DEFAULT_TIMEOUT', '300')),
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'clm-backend',
+        }
+    }
+
 # Email Configuration - Google SMTP with App Password
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('GMAIL', 'suhaib96886@gmail.com')
-EMAIL_HOST_PASSWORD = os.getenv('APP_PASSWORD', 'ruuo ntzn djvu hddg')
-DEFAULT_FROM_EMAIL = os.getenv('GMAIL', 'suhaib96886@gmail.com')
-SERVER_EMAIL = os.getenv('GMAIL', 'suhaib96886@gmail.com')
+EMAIL_HOST_USER = os.getenv('GMAIL', '')
+EMAIL_HOST_PASSWORD = os.getenv('APP_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+SERVER_EMAIL = os.getenv('SERVER_EMAIL', EMAIL_HOST_USER)
+
+if SECURITY_STRICT and (not DEBUG) and (not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD):
+    raise RuntimeError('Email credentials must be set when SECURITY_STRICT is enabled')
 
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')

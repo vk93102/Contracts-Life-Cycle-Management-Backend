@@ -4,12 +4,15 @@ URL configuration for clm_backend project.
 from django.contrib import admin
 from django.urls import path, include
 
+from clm_backend.metrics import metrics_view
+
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('metrics', metrics_view),
     path('api/auth/', include('authentication.urls')),
     path('api/v1/admin/', include('authentication.admin_urls')),
     path('api/', include('notifications.urls')),

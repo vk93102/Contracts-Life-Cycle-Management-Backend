@@ -21,6 +21,7 @@ import uuid
 class TokenView(APIView):
     """POST /api/auth/login/ - Authenticate user and generate JWT token"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
@@ -28,13 +29,32 @@ class TokenView(APIView):
         
         if not email or not password:
             return Response({'error': 'Email and password required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
-            user = User.objects.get(email=email, is_active=True)
-            if not user.check_password(password):
-                return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            user = User.objects.get(email=email)
         except User.DoesNotExist:
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not user.check_password(password):
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # OTP-gated signup: if credentials are correct but account is inactive,
+        # resend verification OTP and prompt the client to verify.
+        if not user.is_active:
+            otp = OTPService.generate_otp()
+            user.login_otp = otp
+            user.otp_created_at = timezone.now()
+            user.otp_attempts = 0
+            user.save(update_fields=['login_otp', 'otp_created_at', 'otp_attempts'])
+            OTPService.send_login_otp(user, otp)
+            return Response(
+                {
+                    'error': 'Account not verified. OTP sent to email.',
+                    'pending_verification': True,
+                    'email': user.email,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         
         refresh = RefreshToken.for_user(user)
         # Embed commonly needed claims so downstream requests don't require a DB lookup.
@@ -68,11 +88,13 @@ class TokenView(APIView):
 class RegisterView(APIView):
     """POST /api/auth/register/ - Register new user"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
         password = request.data.get('password', '')
         full_name = request.data.get('full_name', '').strip()
+        company = request.data.get('company', '').strip()
         tenant_id_raw = (request.data.get('tenant_id') or '').strip()
         tenant_domain = (request.data.get('tenant_domain') or '').strip().lower()
         
@@ -129,41 +151,30 @@ class RegisterView(APIView):
             email=email,
             first_name=full_name.split()[0] if full_name else '',
             tenant_id=tenant_id,
-            is_active=True,
+            is_active=False,
         )
         user.set_password(password)
         user.save()
-        
-        # Send welcome email
-        OTPService.send_welcome_email(user)
-        
-        # Send OTP for email verification
+
+        # Send OTP for email verification (account remains inactive until verified)
         otp_result = OTPService.send_email_otp(user.email)
         otp_message = otp_result.get('message', 'OTP sent to email')
-        
-        refresh = RefreshToken.for_user(user)
-        is_admin = bool(user.is_staff or user.is_superuser)
-        is_superadmin = bool(user.is_superuser)
-        refresh['email'] = user.email
-        refresh['tenant_id'] = str(user.tenant_id)
-        refresh['is_admin'] = is_admin
-        refresh['is_superadmin'] = is_superadmin
-        access = refresh.access_token
-        access['email'] = user.email
-        access['tenant_id'] = str(user.tenant_id)
-        access['is_admin'] = is_admin
-        access['is_superadmin'] = is_superadmin
+
+        # Optionally, store company info via tenant name for new tenants (best-effort).
+        # This avoids schema changes while capturing the organization label for signup.
+        if company and tenant_id:
+            try:
+                tenant = TenantModel.objects.filter(id=tenant_id).first()
+                if tenant and (tenant.name.startswith('Tenant ') or tenant.name == tenant.domain):
+                    tenant.name = company
+                    tenant.save(update_fields=['name'])
+            except Exception:
+                pass
+
         return Response({
-            'access': str(access),
-            'refresh': str(refresh),
-            'user': {
-                'user_id': str(user.user_id),
-                'email': user.email,
-                'tenant_id': str(user.tenant_id),
-                'is_admin': is_admin,
-                'is_superadmin': is_superadmin,
-                'message': f'User registered successfully. {otp_message}',
-            }
+            'message': f'Registration started. {otp_message}',
+            'pending_verification': True,
+            'email': user.email,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -206,6 +217,7 @@ class LogoutView(APIView):
 class RefreshTokenView(APIView):
     """POST /api/auth/refresh/ - Refresh token"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         refresh_token = request.data.get('refresh', '')
@@ -222,6 +234,7 @@ class RefreshTokenView(APIView):
 class RequestLoginOTPView(APIView):
     """POST /api/auth/request-login-otp/ - Request login OTP"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
@@ -229,7 +242,8 @@ class RequestLoginOTPView(APIView):
             return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            user = User.objects.get(email=email, is_active=True)
+            # Used for both login-OTP and email verification resend.
+            user = User.objects.get(email=email)
             otp = OTPService.generate_otp()
             user.login_otp = otp
             user.otp_created_at = timezone.now()
@@ -245,6 +259,7 @@ class RequestLoginOTPView(APIView):
 class VerifyEmailOTPView(APIView):
     """POST /api/auth/verify-email-otp/ - Verify login OTP"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
@@ -254,11 +269,18 @@ class VerifyEmailOTPView(APIView):
             return Response({'error': 'Email and OTP required'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            user = User.objects.get(email=email, is_active=True)
+            # Allow verifying OTP for newly-registered (inactive) users as well.
+            user = User.objects.get(email=email)
             is_valid, msg = OTPService.verify_otp(user, otp, 'login')
             if not is_valid:
                 return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+            # Activate user on successful email verification.
+            if not user.is_active:
+                user.is_active = True
+                user.save(update_fields=['is_active'])
+                OTPService.send_welcome_email(user)
+
             OTPService.clear_otp(user, 'login')
             refresh = RefreshToken.for_user(user)
             is_admin = bool(user.is_staff or user.is_superuser)
@@ -293,6 +315,7 @@ class VerifyEmailOTPView(APIView):
 class ForgotPasswordView(APIView):
     """POST /api/auth/forgot-password/ - Request password reset"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
@@ -316,6 +339,7 @@ class ForgotPasswordView(APIView):
 class VerifyPasswordResetOTPView(APIView):
     """POST /api/auth/verify-password-reset-otp/ - Verify reset OTP"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
@@ -337,6 +361,7 @@ class VerifyPasswordResetOTPView(APIView):
 class ResendPasswordResetOTPView(APIView):
     """POST /api/auth/resend-password-reset-otp/ - Resend OTP"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
@@ -360,6 +385,7 @@ class ResendPasswordResetOTPView(APIView):
 class ResetPasswordView(APIView):
     """POST /api/auth/reset-password/ - Reset password"""
     permission_classes = [AllowAny]
+    throttle_scope = 'auth'
     
     def post(self, request):
         email = request.data.get('email', '').strip().lower()

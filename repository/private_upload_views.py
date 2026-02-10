@@ -60,6 +60,7 @@ class PrivateUploadsView(APIView):
 
     permission_classes = [IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser)
+    throttle_scope = 'uploads'
 
     def get(self, request):
         ids = _get_user_ids(request)
@@ -169,6 +170,7 @@ class PrivateUploadsUrlView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'uploads'
 
     def get(self, request):
         key = request.query_params.get("key")

@@ -29,6 +29,7 @@ class AIViewSet(viewsets.ViewSet):
     AI Endpoints for draft generation, metadata extraction, and classification
     """
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'ai'
 
     @action(detail=False, methods=['post'], url_path='generate/draft')
     def generate_draft(self, request):
