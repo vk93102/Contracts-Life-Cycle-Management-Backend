@@ -8,6 +8,9 @@ from django.conf import settings
 import uuid
 import mimetypes
 import re
+import hashlib
+import unicodedata
+from urllib.parse import quote
 from typing import Any, Dict, List, Optional
 
 
@@ -75,14 +78,50 @@ class R2StorageService:
                 Key=r2_key,
                 Body=file_obj.read(),
                 ContentType=content_type,
-                Metadata={
-                    'tenant_id': str(tenant_id),
-                    'original_filename': filename
-                }
+                Metadata=self._sanitize_metadata(
+                    {
+                        'tenant_id': str(tenant_id),
+                        'original_filename': filename,
+                    }
+                ),
             )
             return r2_key
         except ClientError as e:
             raise Exception(f"Failed to upload file to R2: {str(e)}")
+
+    @staticmethod
+    def _sanitize_metadata_value(value: Any, *, max_len: int = 1024) -> str:
+        """Ensure R2/S3 metadata values are ASCII-only.
+
+        Botocore validates metadata values as ASCII. We percent-encode UTF-8
+        so we can preserve information while staying within ASCII.
+        """
+        if value is None:
+            return ''
+        raw = str(value)
+        # Normalize to reduce surprises (e.g. different dash variants)
+        raw = unicodedata.normalize('NFKC', raw)
+        # Percent-encode any non-safe chars into ASCII bytes.
+        # Keep some common filename chars readable.
+        encoded = quote(raw, safe=" ._()-")
+
+        if max_len and len(encoded) > max_len:
+            digest = hashlib.sha1(encoded.encode('ascii', errors='ignore')).hexdigest()[:10]
+            keep = max(0, max_len - (len(digest) + len('__trunc__')))
+            encoded = f"{encoded[:keep]}__trunc__{digest}"
+        return encoded
+
+    @classmethod
+    def _sanitize_metadata(cls, metadata: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        md_in = metadata or {}
+        md_out: Dict[str, str] = {}
+        for k, v in md_in.items():
+            if not k:
+                continue
+            if v is None:
+                continue
+            md_out[str(k)] = cls._sanitize_metadata_value(v)
+        return md_out
 
     def put_bytes(
         self,
@@ -102,7 +141,7 @@ class R2StorageService:
         if body is None:
             body = b''
 
-        md = {k: str(v) for k, v in (metadata or {}).items() if k and v is not None}
+        md = self._sanitize_metadata(metadata)
 
         try:
             self.client.put_object(
@@ -161,11 +200,13 @@ class R2StorageService:
             Key=r2_key,
             Body=file_obj.read(),
             ContentType=content_type,
-            Metadata={
-                'tenant_id': str(tenant_id),
-                'user_id': str(user_id),
-                'original_filename': original_name,
-            },
+            Metadata=self._sanitize_metadata(
+                {
+                    'tenant_id': str(tenant_id),
+                    'user_id': str(user_id),
+                    'original_filename': original_name,
+                }
+            ),
         )
 
         return {
@@ -191,13 +232,15 @@ class R2StorageService:
             Key=r2_key,
             Body=file_obj.read(),
             ContentType=content_type,
-            Metadata={
-                'tenant_id': str(tenant_id),
-                'user_id': str(user_id),
-                'original_filename': original_name,
-                'purpose': 'review_contract',
-                'file_ext': ext,
-            },
+            Metadata=self._sanitize_metadata(
+                {
+                    'tenant_id': str(tenant_id),
+                    'user_id': str(user_id),
+                    'original_filename': original_name,
+                    'purpose': 'review_contract',
+                    'file_ext': ext,
+                }
+            ),
         )
 
         return {
