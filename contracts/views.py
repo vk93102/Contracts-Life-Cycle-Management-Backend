@@ -20,6 +20,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.db import transaction, connection
+from django.db.models import BigIntegerField
+from django.db.models.expressions import RawSQL
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, Coalesce, Length
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.utils import timezone
@@ -738,7 +742,25 @@ class ContractViewSet(viewsets.ModelViewSet):
                 .order_by('-updated_at')
             )
 
-        return qs
+        # Even for detail actions, avoid pulling large/binary columns unless explicitly needed.
+        return qs.defer('signed_pdf')
+
+    def _editor_content_r2_key_for_contract_id(self, contract_id: uuid.UUID) -> str:
+        tenant_id = str(self.request.user.tenant_id)
+        return f"{tenant_id}/contracts/{contract_id}/editor/latest.json"
+
+    def _get_editor_snapshot_from_r2(self, r2_key: str) -> dict | None:
+        try:
+            if not r2_key:
+                return None
+            r2 = R2StorageService()
+            raw = r2.get_file_bytes(r2_key)
+            if not raw:
+                return None
+            obj = json.loads(raw.decode('utf-8', errors='replace'))
+            return obj if isinstance(obj, dict) else None
+        except Exception:
+            return None
     
     def perform_create(self, serializer):
         """Set tenant_id and created_by when creating a contract"""
@@ -761,6 +783,23 @@ class ContractViewSet(viewsets.ModelViewSet):
 
     def _contract_export_text(self, contract: Contract) -> str:
         md = contract.metadata or {}
+
+        # Prefer the latest editor snapshot in R2 (full content).
+        try:
+            r2_key = md.get('editor_r2_key')
+            if isinstance(r2_key, str) and r2_key.strip():
+                snap = self._get_editor_snapshot_from_r2(r2_key.strip())
+                if isinstance(snap, dict):
+                    txt = snap.get('rendered_text')
+                    if isinstance(txt, str) and txt.strip():
+                        return txt
+                    html = snap.get('rendered_html')
+                    if isinstance(html, str) and html.strip():
+                        return self._strip_html(html)
+        except Exception:
+            pass
+
+        # Fallback to DB metadata (may be truncated).
         txt = md.get('rendered_text')
         if isinstance(txt, str) and txt.strip():
             return txt
@@ -815,16 +854,140 @@ class ContractViewSet(viewsets.ModelViewSet):
             return False
 
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        # If DB content is empty (often due to template-based creation), fallback to R2 snapshot.
-        self._try_rehydrate_editor_content_from_r2(instance)
+        # Avoid transferring huge JSON blobs over the wire: strip large editor fields
+        # at the DB level and let the editor fetch full content from /content/.
+        qs = (
+            self.get_queryset()
+            .defer('metadata')
+            .annotate(
+                _metadata_stripped=RawSQL(
+                    "(metadata - 'rendered_html' - 'rendered_text' - 'raw_text')",
+                    [],
+                )
+            )
+        )
+        instance = get_object_or_404(qs, id=kwargs.get('pk'))
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['patch'], url_path='content')
+    @action(detail=True, methods=['get', 'patch'], url_path='content')
     def update_content(self, request, pk=None):
         """Persist editor changes into Contract.metadata (rendered_text/rendered_html)."""
-        contract = self.get_object()
+        if request.method == 'GET':
+            base_qs = self.get_queryset().filter(id=pk)
+            row = (
+                base_qs.annotate(
+                    r2_key=KeyTextTransform('editor_r2_key', 'metadata'),
+                    client_ms=Cast(KeyTextTransform('editor_client_updated_at_ms', 'metadata'), BigIntegerField()),
+                    server_ms=Cast(KeyTextTransform('editor_server_updated_at_ms', 'metadata'), BigIntegerField()),
+                )
+                .values('id', 'title', 'r2_key', 'client_ms', 'server_ms')
+                .first()
+            )
+            if not row:
+                return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            r2_key = (row.get('r2_key') or '').strip()
+            snapshot = self._get_editor_snapshot_from_r2(r2_key) if r2_key else None
+            if snapshot:
+                return Response(
+                    {
+                        'contract_id': str(row['id']),
+                        'r2_key': r2_key,
+                        'client_updated_at_ms': snapshot.get('client_updated_at_ms') or row.get('client_ms'),
+                        'server_updated_at_ms': snapshot.get('server_updated_at_ms') or row.get('server_ms'),
+                        'rendered_text': snapshot.get('rendered_text') or '',
+                        'rendered_html': snapshot.get('rendered_html') or '',
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # Fallback: older rows may still have full content in DB metadata.
+            contract = base_qs.only('id', 'metadata', 'updated_at', 'title').first()
+            if not contract:
+                return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+            md = contract.metadata or {}
+            rendered_text = md.get('rendered_text') or ''
+            rendered_html = md.get('rendered_html') or ''
+
+            # Best-effort: write a snapshot to R2 and compact metadata (remove large keys).
+            try:
+                key = self._editor_content_r2_key_for_contract_id(contract.id)
+                payload = {
+                    'schema': 'clm.editor_snapshot.v1',
+                    'contract_id': str(contract.id),
+                    'tenant_id': str(request.user.tenant_id),
+                    'updated_at': timezone.now().isoformat(),
+                    'client_updated_at_ms': md.get('editor_client_updated_at_ms'),
+                    'server_updated_at_ms': md.get('editor_server_updated_at_ms'),
+                    'rendered_text': rendered_text,
+                    'rendered_html': rendered_html,
+                }
+                r2 = R2StorageService()
+                r2.put_text(
+                    key,
+                    json.dumps(payload, ensure_ascii=False),
+                    content_type='application/json; charset=utf-8',
+                    metadata={
+                        'tenant_id': str(request.user.tenant_id),
+                        'contract_id': str(contract.id),
+                        'purpose': 'editor_snapshot',
+                    },
+                )
+                md['editor_r2_key'] = key
+                md['editor_r2_synced_at'] = timezone.now().isoformat()
+                md['editor_r2_sync_ok'] = True
+                md.pop('rendered_html', None)
+                # Keep only a bounded excerpt of text in DB.
+                if isinstance(rendered_text, str):
+                    md['rendered_text'] = rendered_text[:20000]
+                    md['rendered_text_truncated'] = len(rendered_text) > 20000
+                contract.metadata = md
+                contract.save(update_fields=['metadata', 'updated_at'])
+                r2_key = key
+            except Exception:
+                pass
+
+            return Response(
+                {
+                    'contract_id': str(contract.id),
+                    'r2_key': r2_key or None,
+                    'client_updated_at_ms': md.get('editor_client_updated_at_ms'),
+                    'server_updated_at_ms': md.get('editor_server_updated_at_ms'),
+                    'rendered_text': rendered_text if isinstance(rendered_text, str) else '',
+                    'rendered_html': rendered_html if isinstance(rendered_html, str) else '',
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # PATCH: persist editor changes.
+        base_qs = self.get_queryset().filter(id=pk)
+        row = (
+            base_qs.annotate(
+                _metadata_stripped=RawSQL(
+                    "(metadata - 'rendered_html' - 'rendered_text' - 'raw_text')",
+                    [],
+                ),
+                existing_client_ms=Cast(KeyTextTransform('editor_client_updated_at_ms', 'metadata'), BigIntegerField()),
+                existing_r2_key=KeyTextTransform('editor_r2_key', 'metadata'),
+                existing_text_len=Coalesce(Length(KeyTextTransform('rendered_text', 'metadata')), 0),
+                existing_html_len=Coalesce(Length(KeyTextTransform('rendered_html', 'metadata')), 0),
+            )
+            .values(
+                'id',
+                'title',
+                'contract_type',
+                'status',
+                '_metadata_stripped',
+                'existing_client_ms',
+                'existing_r2_key',
+                'existing_text_len',
+                'existing_html_len',
+            )
+            .first()
+        )
+        if not row:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
         rendered_text = request.data.get('rendered_text', None)
         rendered_html = request.data.get('rendered_html', None)
@@ -843,7 +1006,9 @@ class ContractViewSet(viewsets.ModelViewSet):
         if rendered_text is None and rendered_html is not None:
             rendered_text = self._strip_html(rendered_html)
 
-        md = contract.metadata or {}
+        md = row.get('_metadata_stripped') or {}
+        if not isinstance(md, dict):
+            md = {}
 
         # Safety: refuse accidental empty overwrites (common if the editor briefly initializes empty
         # and an autosave fires). Allow explicit clearing via `allow_clear=true`.
@@ -864,16 +1029,31 @@ class ContractViewSet(viewsets.ModelViewSet):
             text_only = re.sub(r'<[^>]*>', '', normalized)
             return len(text_only) == 0
 
-        existing_text = str(md.get('rendered_text') or '').strip()
-        existing_html = str(md.get('rendered_html') or '').strip()
+        # Determine whether server already has content without pulling the full blobs.
+        existing_text_len = int(row.get('existing_text_len') or 0)
+        existing_html_len = int(row.get('existing_html_len') or 0)
+        existing_r2_key = str(row.get('existing_r2_key') or '').strip()
         incoming_text = str(rendered_text or '').strip()
         incoming_html = str(rendered_html or '')
         incoming_is_empty = (not incoming_text) and _is_meaningfully_empty_html(incoming_html)
-        existing_is_nonempty = bool(existing_text) or (existing_html and not _is_meaningfully_empty_html(existing_html))
+        existing_is_nonempty = bool(existing_r2_key) or existing_text_len > 0 or existing_html_len > 0
 
         if incoming_is_empty and existing_is_nonempty and not allow_clear:
             # Return current state without modifying.
-            return Response(ContractDetailSerializer(contract).data, status=status.HTTP_200_OK)
+            # Return a lightweight contract payload.
+            contract_obj = (
+                base_qs.defer('metadata')
+                .annotate(
+                    _metadata_stripped=RawSQL(
+                        "(metadata - 'rendered_html' - 'rendered_text' - 'raw_text')",
+                        [],
+                    )
+                )
+                .first()
+            )
+            if not contract_obj:
+                return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(ContractDetailSerializer(contract_obj).data, status=status.HTTP_200_OK)
 
         # Guard against out-of-order autosave requests overwriting newer content.
         # Frontend sends a monotonic `client_updated_at_ms`; ignore writes older than what we have.
@@ -886,7 +1066,7 @@ class ContractViewSet(viewsets.ModelViewSet):
             if incoming_client_ms < 0:
                 incoming_client_ms = None
 
-        existing_client_ms = md.get('editor_client_updated_at_ms')
+        existing_client_ms = row.get('existing_client_ms')
         if isinstance(existing_client_ms, (int, float)):
             existing_client_ms = int(existing_client_ms)
         else:
@@ -910,29 +1090,39 @@ class ContractViewSet(viewsets.ModelViewSet):
             md['editor_client_updated_at_ms'] = incoming_client_ms
         md['editor_server_updated_at_ms'] = server_ms
         md['editor_updated_at_ms'] = max(server_ms, incoming_client_ms or 0)
-        if rendered_text is not None:
-            md['rendered_text'] = rendered_text
-        if rendered_html is not None:
-            md['rendered_html'] = rendered_html
 
-        contract.metadata = md
-        contract.last_edited_at = timezone.now()
-        contract.last_edited_by = request.user.user_id
-        contract.save(update_fields=['metadata', 'last_edited_at', 'last_edited_by', 'updated_at'])
+        # Keep only bounded DB content; full content lives in R2.
+        md.pop('rendered_html', None)
+        md.pop('raw_text', None)
+        md['editor_has_content'] = bool(incoming_text) or (not _is_meaningfully_empty_html(incoming_html))
+        md['editor_text_len'] = len(rendered_text or '')
+        md['editor_html_len'] = len(rendered_html or '')
+        md['editor_preview_text'] = (incoming_text[:2000] if incoming_text else '')
+        if rendered_text is not None:
+            md['rendered_text'] = (rendered_text or '')[:20000]
+            md['rendered_text_truncated'] = len(rendered_text or '') > 20000
+
+        now = timezone.now()
+        base_qs.update(
+            metadata=md,
+            last_edited_at=now,
+            last_edited_by=request.user.user_id,
+            updated_at=now,
+        )
 
         # Best-effort: keep search index in sync for hybrid/semantic search.
         try:
             from search.services import SearchIndexingService
 
-            content_for_index = str((contract.metadata or {}).get('rendered_text') or '').strip()
+            content_for_index = str(rendered_text or '').strip()
             if content_for_index:
                 SearchIndexingService.create_index(
                     entity_type='contract',
-                    entity_id=str(contract.id),
-                    title=contract.title or 'Contract',
+                    entity_id=str(row['id']),
+                    title=(row.get('title') or 'Contract'),
                     content=content_for_index,
                     tenant_id=str(request.user.tenant_id),
-                    keywords=[x for x in [contract.contract_type, contract.status] if x],
+                    keywords=[x for x in [row.get('contract_type'), row.get('status')] if x],
                 )
         except Exception:
             # Do not fail the editor save if search indexing fails.
@@ -943,10 +1133,10 @@ class ContractViewSet(viewsets.ModelViewSet):
         # Version history is handled via explicit contract versioning endpoints.
         try:
             r2 = R2StorageService()
-            key = self._editor_snapshot_r2_key(contract)
+            key = self._editor_content_r2_key_for_contract_id(row['id'])
             payload = {
                 'schema': 'clm.editor_snapshot.v1',
-                'contract_id': str(contract.id),
+                'contract_id': str(row['id']),
                 'tenant_id': str(request.user.tenant_id),
                 'updated_at': timezone.now().isoformat(),
                 'client_updated_at_ms': incoming_client_ms,
@@ -960,23 +1150,36 @@ class ContractViewSet(viewsets.ModelViewSet):
                 content_type='application/json; charset=utf-8',
                 metadata={
                     'tenant_id': str(request.user.tenant_id),
-                    'contract_id': str(contract.id),
+                    'contract_id': str(row['id']),
                     'purpose': 'editor_snapshot',
                 },
             )
             md['editor_r2_key'] = key
             md['editor_r2_synced_at'] = timezone.now().isoformat()
             md['editor_r2_sync_ok'] = True
-            if 'editor_r2_sync_error' in md:
-                md.pop('editor_r2_sync_error', None)
-            contract.metadata = md
-            contract.save(update_fields=['metadata', 'updated_at'])
+            md.pop('editor_r2_sync_error', None)
+            base_qs.update(metadata=md, updated_at=timezone.now())
         except Exception as e:
             # DB save succeeded; keep a lightweight marker to surface R2 sync issues.
             md['editor_r2_sync_ok'] = False
             md['editor_r2_sync_error'] = str(e)[:400]
-            contract.metadata = md
-            contract.save(update_fields=['metadata', 'updated_at'])
+            base_qs.update(metadata=md, updated_at=timezone.now())
+
+        # Return a lightweight contract payload.
+        contract_obj = (
+            base_qs.defer('metadata')
+            .annotate(
+                _metadata_stripped=RawSQL(
+                    "(metadata - 'rendered_html' - 'rendered_text' - 'raw_text')",
+                    [],
+                )
+            )
+            .first()
+        )
+        if not contract_obj:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(ContractDetailSerializer(contract_obj).data, status=status.HTTP_200_OK)
 
         return Response(ContractDetailSerializer(contract).data, status=status.HTTP_200_OK)
 
@@ -1004,7 +1207,18 @@ class ContractViewSet(viewsets.ModelViewSet):
         md = contract.metadata or {}
         current_text = request.data.get('current_text')
         if current_text is None:
-            current_text = md.get('rendered_text') or self._strip_html(md.get('rendered_html') or '')
+            # Prefer R2 snapshot (full content) if present.
+            snap_text = None
+            try:
+                r2_key = md.get('editor_r2_key')
+                if isinstance(r2_key, str) and r2_key.strip():
+                    snap = self._get_editor_snapshot_from_r2(r2_key.strip())
+                    if isinstance(snap, dict):
+                        snap_text = snap.get('rendered_text') or self._strip_html(snap.get('rendered_html') or '')
+            except Exception:
+                snap_text = None
+
+            current_text = snap_text or md.get('rendered_text') or self._strip_html(md.get('rendered_html') or '')
         if not isinstance(current_text, str):
             return Response({'error': 'current_text must be a string'}, status=status.HTTP_400_BAD_REQUEST)
 

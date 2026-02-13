@@ -606,17 +606,32 @@ class SearchIndexingService:
         from .models import SearchIndexModel
         
         try:
-            # Generate embedding (best-effort)
-            embedding = EmbeddingService.generate(
-                f"{title}\n\n{content}",
-                input_type="document",
-            )
+            # Generate embedding (best-effort). If the embeddings provider is not
+            # configured (or key is invalid), still create the index entry.
+            embedding = None
+            try:
+                embedding = EmbeddingService.generate(
+                    f"{title}\n\n{content}",
+                    input_type="document",
+                )
+            except Exception as e:
+                logger.warning(f"Embedding generation failed (continuing without embedding): {str(e)}")
             
-            existing = SearchIndexModel.objects.filter(
+            qs = SearchIndexModel.objects.filter(
                 tenant_id=tenant_id,
                 entity_type=entity_type,
                 entity_id=entity_id,
-            ).first()
+            )
+
+            # Defensive: older data can contain duplicates (no unique constraint).
+            # Keep the newest row and delete the rest to prevent update_or_create()
+            # from raising MultipleObjectsReturned.
+            existing = qs.order_by('-updated_at', '-created_at').first()
+            try:
+                if qs.count() > 1 and existing:
+                    qs.exclude(id=existing.id).delete()
+            except Exception:
+                pass
             existing_md = (getattr(existing, 'metadata', None) or {}) if existing else {}
 
             merged_md = {
@@ -626,19 +641,27 @@ class SearchIndexingService:
                 'indexed_by': 'SearchIndexingService',
             }
 
-            # Create or update
-            index_obj, created = SearchIndexModel.objects.update_or_create(
-                tenant_id=tenant_id,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                defaults={
-                    'title': title,
-                    'content': content,
-                    'keywords': keywords or [],
-                    'embedding': embedding,
-                    'metadata': merged_md,
-                }
-            )
+            if existing:
+                # Update in-place (avoids any chance of MultipleObjectsReturned)
+                existing.title = title
+                existing.content = content
+                existing.keywords = keywords or []
+                existing.embedding = embedding
+                existing.metadata = merged_md
+                existing.save(update_fields=['title', 'content', 'keywords', 'embedding', 'metadata', 'updated_at'])
+                index_obj, created = existing, False
+            else:
+                index_obj = SearchIndexModel.objects.create(
+                    tenant_id=tenant_id,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    title=title,
+                    content=content,
+                    keywords=keywords or [],
+                    embedding=embedding,
+                    metadata=merged_md,
+                )
+                created = True
             
             # Update FTS vector
             from django.contrib.postgres.search import SearchVector

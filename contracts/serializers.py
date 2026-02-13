@@ -112,6 +112,7 @@ class ContractClauseSerializer(serializers.ModelSerializer):
 
 class ContractDetailSerializer(serializers.ModelSerializer):
     latest_version = serializers.SerializerMethodField()
+    metadata = serializers.SerializerMethodField()
     # rendered_text/rendered_html are stored in `metadata`.
     # Avoid duplicating large payloads at the top-level.
     
@@ -147,6 +148,41 @@ class ContractDetailSerializer(serializers.ModelSerializer):
             return ContractVersionSerializer(latest).data
         except ContractVersion.DoesNotExist:
             return None
+
+    def get_metadata(self, obj):
+        """Return metadata but strip large rendered fields.
+
+        Some older rows stored huge `rendered_html` / `rendered_text` in metadata.
+        Returning them in GET /contracts/{id}/ makes responses massive and can
+        destabilize DB connections. The editor should fetch full content from
+        /contracts/{id}/content/ instead.
+
+        If the view annotated a stripped JSONB (e.g. `_metadata_stripped`), prefer it
+        to avoid fetching the full metadata column.
+        """
+        md = getattr(obj, '_metadata_stripped', None)
+        if md is None:
+            md = obj.metadata
+        if not isinstance(md, dict):
+            return {}
+
+        # Always remove large rendered fields from the detail payload.
+        out = dict(md)
+        out.pop('rendered_html', None)
+        out.pop('rendered_text', None)
+        out.pop('raw_text', None)
+
+        # Additionally, drop any single string value that is clearly too large.
+        # (Defensive for other accidentally-stored blobs.)
+        try:
+            for k, v in list(out.items()):
+                if isinstance(v, str) and len(v) > 20000:
+                    out[k] = v[:20000]
+                    out[f'{k}_truncated'] = True
+        except Exception:
+            pass
+
+        return out
 
     # rendered_text/rendered_html intentionally omitted from API response fields.
 
