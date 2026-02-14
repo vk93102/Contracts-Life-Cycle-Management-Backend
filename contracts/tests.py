@@ -81,3 +81,57 @@ class TemplateBasedDraftingFlowTests(TestCase):
 		self.assertEqual(str(contract.tenant_id), str(self.user.tenant_id))
 		self.assertEqual(contract.contract_type, 'NDA')
 		self.assertIn('rendered_text', contract.metadata or {})
+
+
+class ContractOwnershipIsolationTests(TestCase):
+	def setUp(self):
+		self.client = APIClient()
+		self.tenant_id = self._new_tenant_id()
+		self.user1 = User.objects.create_user(email='u1@example.com', password='pass1234', tenant_id=self.tenant_id)
+		self.user2 = User.objects.create_user(email='u2@example.com', password='pass1234', tenant_id=self.tenant_id)
+
+		Contract.objects.all().delete()
+		self.contract1 = Contract.objects.create(
+			tenant_id=self.tenant_id,
+			title='User1 Contract',
+			status='draft',
+			created_by=self.user1.user_id,
+		)
+		self.contract2 = Contract.objects.create(
+			tenant_id=self.tenant_id,
+			title='User2 Contract',
+			status='draft',
+			created_by=self.user2.user_id,
+		)
+
+	def _new_tenant_id(self):
+		import uuid
+		return uuid.uuid4()
+
+	def test_list_only_returns_my_contracts(self):
+		self.client.force_authenticate(user=self.user1)
+		res = self.client.get('/api/v1/contracts/')
+		self.assertEqual(res.status_code, 200)
+		payload = res.json()
+		rows = payload
+		if isinstance(payload, dict) and isinstance(payload.get('results'), list):
+			rows = payload.get('results')
+		if isinstance(rows, list) and rows and isinstance(rows[0], str):
+			ids = set(rows)
+		else:
+			ids = {row.get('id') for row in (rows or []) if isinstance(row, dict)}
+		self.assertIn(str(self.contract1.id), ids)
+		self.assertNotIn(str(self.contract2.id), ids)
+
+	def test_cannot_delete_other_users_contract(self):
+		self.client.force_authenticate(user=self.user2)
+		res = self.client.delete(f'/api/v1/contracts/{self.contract1.id}/')
+		# Should not reveal existence of other users' contracts.
+		self.assertIn(res.status_code, (403, 404))
+		self.assertTrue(Contract.objects.filter(id=self.contract1.id).exists())
+
+	def test_can_delete_own_contract(self):
+		self.client.force_authenticate(user=self.user1)
+		res = self.client.delete(f'/api/v1/contracts/{self.contract1.id}/')
+		self.assertEqual(res.status_code, 204)
+		self.assertFalse(Contract.objects.filter(id=self.contract1.id).exists())

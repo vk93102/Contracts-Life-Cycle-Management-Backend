@@ -23,12 +23,6 @@ from django.contrib.auth import get_user_model  # noqa: E402
 from django.core.management import call_command  # noqa: E402
 from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
 from rest_framework.test import APIClient  # noqa: E402
-
-
-if settings.DATABASES["default"].get("ENGINE") == "django.db.backends.sqlite3":
-    settings.DATABASES["default"]["OPTIONS"] = {}
-
-
 class FakeS3Client:
     """Minimal fake S3 client for R2 interactions during tests."""
 

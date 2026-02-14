@@ -20,7 +20,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.db import transaction, connection
-from django.db.models import BigIntegerField
+from django.db.models import BigIntegerField, Q
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast, Coalesce, Length
@@ -664,6 +664,22 @@ class ContractViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def _is_admin_like(self) -> bool:
+        user = getattr(self, 'request', None) and getattr(self.request, 'user', None)
+        if not user:
+            return False
+        return bool(
+            getattr(user, 'is_superuser', False)
+            or getattr(user, 'is_staff', False)
+            or getattr(user, 'is_superadmin', False)
+            or getattr(user, 'is_admin', False)
+        )
+
+    def _user_id_str(self) -> str:
+        user = getattr(self, 'request', None) and getattr(self.request, 'user', None)
+        val = getattr(user, 'user_id', '') if user else ''
+        return str(val or '').strip()
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -721,7 +737,19 @@ class ContractViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         tenant_id = self.request.user.tenant_id
+        if not tenant_id:
+            return Contract.objects.none()
+
         qs = Contract.objects.filter(tenant_id=tenant_id)
+
+        # Scope contracts so users only see their own (plus any contracts
+        # they are currently assigned to approve). Admin-like users can see
+        # the whole tenant.
+        if not self._is_admin_like():
+            user_id = self._user_id_str()
+            if not user_id:
+                return Contract.objects.none()
+            qs = qs.filter(Q(created_by=user_id) | Q(current_approvers__contains=[user_id]))
 
         # Contract list endpoints should be fast and small. Defer large/binary columns
         # so Postgres/Django don't pull them over the wire.
@@ -744,6 +772,67 @@ class ContractViewSet(viewsets.ModelViewSet):
 
         # Even for detail actions, avoid pulling large/binary columns unless explicitly needed.
         return qs.defer('signed_pdf')
+
+    def destroy(self, request, *args, **kwargs):
+        instance: Contract = self.get_object()
+
+        # Non-admins may only delete contracts they created.
+        if not self._is_admin_like() and str(instance.created_by) != self._user_id_str():
+            return Response({'detail': 'You do not have permission to delete this contract.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Be careful with irreversible deletes of finalized documents.
+        if not self._is_admin_like() and instance.status == 'executed':
+            return Response({'detail': 'Executed contracts cannot be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        tenant_id = str(getattr(request.user, 'tenant_id', '') or '').strip()
+        r2_keys: set[str] = set()
+
+        try:
+            if instance.document_r2_key:
+                r2_keys.add(str(instance.document_r2_key))
+
+            md = instance.metadata or {}
+            if isinstance(md, dict):
+                editor_r2_key = md.get('editor_r2_key')
+                if isinstance(editor_r2_key, str) and editor_r2_key.strip():
+                    r2_keys.add(editor_r2_key.strip())
+
+            for key in ContractVersion.objects.filter(contract=instance).values_list('r2_key', flat=True):
+                if key:
+                    r2_keys.add(str(key))
+
+            # Delete any contract-scoped artifacts (editor snapshots, signature field config, etc.)
+            # stored under a deterministic prefix.
+            if tenant_id:
+                prefix = f"{tenant_id}/contracts/{instance.id}/"
+                try:
+                    r2 = R2StorageService()
+                    for obj in r2.list_objects(prefix=prefix, max_keys=200):
+                        k = obj.get('key')
+                        if isinstance(k, str) and k.strip():
+                            r2_keys.add(k.strip())
+                except Exception:
+                    pass
+        except Exception:
+            # Never block delete on cleanup bookkeeping.
+            pass
+
+        with transaction.atomic():
+            instance.delete()
+
+        # Best-effort storage cleanup (do not fail the API call).
+        if r2_keys:
+            try:
+                r2 = R2StorageService()
+                for key in r2_keys:
+                    try:
+                        r2.delete_file(key)
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _editor_content_r2_key_for_contract_id(self, contract_id: uuid.UUID) -> str:
         tenant_id = str(self.request.user.tenant_id)

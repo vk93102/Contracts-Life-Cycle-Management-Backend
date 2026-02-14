@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import timedelta
+import sys
 import os
 from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
@@ -194,7 +195,9 @@ def _parse_database_url(database_url: str) -> dict:
         },
         'TEST': {
             'NAME': os.getenv('DB_TEST_NAME', 'test_postgres'),
-            'MIGRATE': os.getenv('DB_TEST_MIGRATE', 'false').strip().lower() in ('1', 'true', 'yes', 'y', 'on'),
+            # Supabase projects commonly rely on extensions (e.g. pgvector/pg_trgm).
+            # Running migrations ensures those extensions are created before tables.
+            'MIGRATE': os.getenv('DB_TEST_MIGRATE', 'true').strip().lower() in ('1', 'true', 'yes', 'y', 'on'),
         },
     }
 
@@ -240,11 +243,24 @@ DATABASES = {
         'TEST': {
             # Use a stable Supabase test DB name; run tests with --keepdb.
             'NAME': os.getenv('DB_TEST_NAME', 'test_postgres'),
-            # Skip migrations to reduce long-running operations against Supabase.
-            'MIGRATE': os.getenv('DB_TEST_MIGRATE', 'false').strip().lower() in ('1', 'true', 'yes', 'y', 'on'),
+            # Default to running migrations so extensions required by models (pgvector/pg_trgm)
+            # are available during test database creation.
+            'MIGRATE': os.getenv('DB_TEST_MIGRATE', 'true').strip().lower() in ('1', 'true', 'yes', 'y', 'on'),
         },
     }
 }
+
+# Tests against Supabase should not keep long-lived connections open.
+# Persistent connections can prevent the test database from being dropped.
+if any(arg == 'test' for arg in sys.argv):
+    try:
+        DATABASES['default']['CONN_MAX_AGE'] = 0
+    except Exception:
+        pass
+
+    # Supabase environments can keep background/pooled connections open.
+    # Dropping the test DB can become flaky; keepdb avoids noisy failures.
+    TEST_RUNNER = 'clm_backend.test_runner.SupabaseKeepdbTestRunner'
 
 # If a single DATABASE_URL is provided, it takes precedence.
 if DATABASE_URL:
