@@ -408,6 +408,7 @@ CORS_ALLOWED_ORIGINS = [
     # Production - Netlify
     "https://verdant-douhua-1148be.netlify.app",
     "http://127.0.0.1:8000",
+    "https://lawflow.lawflow-dev.workers.dev/",
     # Production - Render
     "http://127.0.0.1:8000",
     # Allow all origins (for development/testing - restrict in production)
