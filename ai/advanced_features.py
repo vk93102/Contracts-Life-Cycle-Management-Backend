@@ -1,13 +1,3 @@
-"""
-Advanced AI Features for CLM Backend
-
-Phase 4 Features:
-1. Obligation Extraction - Extract action items from contracts
-2. Clause Suggestions - Generate improved clause versions with RAG
-3. Document Summarization - Create 3-5 sentence summaries with caching
-4. Similar Clause Finder - Search for similar clauses across documents
-"""
-
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -29,15 +19,8 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
 class AdvancedAIViewSet(viewsets.ViewSet):
-    """
-    Advanced AI features for contract analysis
-    """
+   
     permission_classes = [IsAuthenticated]
-    
-    # ==========================================
-    # FEATURE 1: OBLIGATION EXTRACTION
-    # ==========================================
-    
     @action(detail=False, methods=['post'], url_path='extract/obligations')
     def extract_obligations(self, request):
         """
