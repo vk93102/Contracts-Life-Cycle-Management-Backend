@@ -233,6 +233,7 @@ class AIViewSet(viewsets.ViewSet):
         prompt = (request.data.get('prompt') or '').strip()
         current_text = request.data.get('current_text')
         contract_type = (request.data.get('contract_type') or '').strip() or None
+        messages = request.data.get('messages')
 
         if not prompt:
             return Response({'error': 'prompt is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -328,6 +329,38 @@ class AIViewSet(viewsets.ViewSet):
         base_text = (current_text or '')[:20000]
         user_instruction = prompt[:4000]
 
+        def _format_history(messages_obj) -> str:
+            """Format prior chat messages for context (safe + size-bounded)."""
+            if not isinstance(messages_obj, list):
+                return ''
+
+            cleaned = []
+            for m in messages_obj[-24:]:
+                if not isinstance(m, dict):
+                    continue
+                role = str(m.get('role') or '').strip().lower()
+                content = m.get('content')
+                if role not in ('user', 'assistant', 'system'):
+                    continue
+                if not isinstance(content, str):
+                    continue
+                text = content.strip()
+                if not text:
+                    continue
+                # Avoid dumping huge content into the prompt.
+                cleaned.append((role, text[:1200]))
+
+            if not cleaned:
+                return ''
+
+            lines = []
+            for role, text in cleaned:
+                tag = 'User' if role == 'user' else 'Assistant' if role == 'assistant' else 'System'
+                lines.append(f"{tag}: {text}")
+            return "\n".join(lines)[:12000]
+
+        history_block = _format_history(messages)
+
         generation_prompt = f"""
 You are a senior legal contract drafting assistant.
 
@@ -344,6 +377,11 @@ Output rules:
 
 User instruction:
 {user_instruction}
+
+Conversation context (for reference):
+---
+{history_block or '(none)'}
+---
 
 Existing contract text:
 ---
