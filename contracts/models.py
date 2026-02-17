@@ -620,6 +620,168 @@ class SigningAuditLog(models.Model):
 
 
 # ==========================================================================
+# Inhouse E-Sign Models (no third-party provider)
+# ==========================================================================
+
+
+class InhouseSignatureContract(models.Model):
+    """Inhouse signing request state for a contract."""
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent for Signature'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('declined', 'Declined'),
+        ('failed', 'Failed'),
+    ]
+
+    SIGNING_ORDER_CHOICES = [
+        ('sequential', 'Sequential'),
+        ('parallel', 'Parallel'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contract = models.OneToOneField(
+        Contract,
+        on_delete=models.CASCADE,
+        related_name='inhouse_signature_contract',
+        help_text='Associated CLM contract',
+    )
+
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='draft', db_index=True)
+    signing_order = models.CharField(max_length=20, choices=SIGNING_ORDER_CHOICES, default='sequential')
+
+    sent_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)
+
+    # Immutable-ish execution artifact (stamped as each signer signs)
+    executed_pdf = models.BinaryField(null=True, blank=True)
+    executed_pdf_content_type = models.CharField(max_length=100, default='application/pdf')
+
+    signing_request_data = models.JSONField(default=dict, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'inhouse_signature_contracts'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status'], name='inhouse_sc_status_idx'),
+            models.Index(fields=['contract', 'status'], name='ih_sc_contract_status_idx'),
+        ]
+
+    def __str__(self):
+        title = getattr(self.contract, 'title', '')
+        return f"InhouseSignature: {title} ({self.status})"
+
+
+class InhouseSigner(models.Model):
+    STATUS_CHOICES = [
+        ('invited', 'Invited'),
+        ('viewed', 'Viewed'),
+        ('in_progress', 'In Progress'),
+        ('signed', 'Signed'),
+        ('declined', 'Declined'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    inhouse_signature_contract = models.ForeignKey(
+        InhouseSignatureContract,
+        on_delete=models.CASCADE,
+        related_name='signers',
+    )
+
+    email = models.EmailField()
+    name = models.CharField(max_length=255)
+    recipient_index = models.IntegerField(default=0, help_text='0-based index used for signature placement mapping')
+    signing_order = models.IntegerField(default=0, help_text='Order in signing sequence (1-based). 0 for parallel')
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='invited', db_index=True)
+    has_signed = models.BooleanField(default=False)
+    signed_at = models.DateTimeField(null=True, blank=True)
+
+    access_token = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+
+    signature_png = models.BinaryField(null=True, blank=True)
+    signature_mime = models.CharField(max_length=50, default='image/png')
+    signed_ip_address = models.GenericIPAddressField(null=True, blank=True)
+    signed_user_agent = models.TextField(null=True, blank=True)
+    signed_device_id = models.CharField(max_length=128, null=True, blank=True)
+
+    invited_at = models.DateTimeField(auto_now_add=True)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'inhouse_signers'
+        ordering = ['signing_order', 'email']
+        unique_together = [('inhouse_signature_contract', 'email')]
+        indexes = [
+            models.Index(fields=['inhouse_signature_contract', 'status'], name='inhouse_signer_sc_status_idx'),
+            models.Index(fields=['email'], name='inhouse_signer_email_idx'),
+            models.Index(fields=['access_token'], name='inhouse_signer_token_idx'),
+        ]
+
+    def __str__(self):
+        title = getattr(self.inhouse_signature_contract.contract, 'title', '')
+        return f"{self.email} ({self.status}) - {title}"
+
+
+class InhouseSigningAuditLog(models.Model):
+    EVENT_CHOICES = [
+        ('invite_sent', 'Invitation Sent'),
+        ('link_viewed', 'Link Viewed'),
+        ('signing_started', 'Signing Started'),
+        ('signing_completed', 'Signing Completed'),
+        ('signing_declined', 'Signing Declined'),
+        ('status_checked', 'Status Checked'),
+        ('document_downloaded', 'Document Downloaded'),
+        ('error', 'Error'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    inhouse_signature_contract = models.ForeignKey(
+        InhouseSignatureContract,
+        on_delete=models.CASCADE,
+        related_name='audit_logs',
+    )
+    signer = models.ForeignKey(
+        InhouseSigner,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='audit_logs',
+    )
+
+    event = models.CharField(max_length=50, choices=EVENT_CHOICES, db_index=True)
+    message = models.TextField()
+
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    device_id = models.CharField(max_length=128, null=True, blank=True)
+    extra = models.JSONField(default=dict, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'inhouse_signing_audit_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['inhouse_signature_contract', 'created_at'], name='ih_audit_sc_created_idx'),
+            models.Index(fields=['event', 'created_at'], name='ih_audit_event_created_idx'),
+        ]
+
+    def __str__(self):
+        title = getattr(self.inhouse_signature_contract.contract, 'title', '')
+        return f"{self.event} - {title} at {self.created_at}"
+
+
+# ==========================================================================
 # Firma E-Sign Models (separate provider)
 # ==========================================================================
 

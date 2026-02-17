@@ -5,6 +5,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from . import firma_views
+from . import inhouse_esign_views
 from .template_views import (
     TemplateTypesView,
     TemplateTypeSummaryView,
@@ -72,6 +73,15 @@ urlpatterns = [
     path('esign/signing-url/<str:contract_id>/', views.get_signing_url, name='get_signing_url'),
     path('esign/status/<str:contract_id>/', views.check_status, name='check_status'),
     path('esign/executed/<str:contract_id>/', views.get_executed_document, name='get_executed_document'),
+
+    # ========== INHOUSE E-SIGNATURE ENDPOINTS ==========
+    path('inhouse/esign/start/', inhouse_esign_views.inhouse_start, name='inhouse_esign_start'),
+    path('inhouse/esign/status/<uuid:contract_id>/', inhouse_esign_views.inhouse_status, name='inhouse_esign_status'),
+    path('inhouse/esign/executed/<uuid:contract_id>/', inhouse_esign_views.inhouse_download_executed, name='inhouse_esign_executed'),
+    # signer-facing endpoints (no auth; token is the secret)
+    path('inhouse/esign/session/<uuid:token>/', inhouse_esign_views.inhouse_session, name='inhouse_esign_session'),
+    path('inhouse/esign/pdf/<uuid:token>/', inhouse_esign_views.inhouse_pdf, name='inhouse_esign_pdf'),
+    path('inhouse/esign/sign/<uuid:token>/', inhouse_esign_views.inhouse_sign, name='inhouse_esign_sign'),
 
     # ========== FIRMA E-SIGNATURE ENDPOINTS ==========
     path('firma/sign/', firma_views.firma_sign, name='firma_sign'),

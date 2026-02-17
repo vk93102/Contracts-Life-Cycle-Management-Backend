@@ -211,9 +211,11 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             response.headers.setdefault('X-Content-Type-Options', 'nosniff')
             response.headers.setdefault('Referrer-Policy', getattr(settings, 'SECURE_REFERRER_POLICY', 'same-origin'))
 
-            # If you must allow framing (e.g. embedded signing), configure via env.
+            # Clickjacking protection: default to settings.X_FRAME_OPTIONS.
+            # For in-house signer PDF preview we intentionally allow embedding in the frontend.
+            allow_framing = request.path.startswith('/api/v1/inhouse/esign/pdf/')
             xfo = getattr(settings, 'X_FRAME_OPTIONS', None)
-            if xfo:
+            if xfo and not allow_framing and not getattr(response, 'xframe_options_exempt', False):
                 response.headers.setdefault('X-Frame-Options', xfo)
 
             # CSP is off by default; enable only once frontend requirements are known.
