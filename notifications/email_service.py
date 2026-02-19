@@ -8,8 +8,10 @@ Supports HTML templates and clickable approval actions.
 import os
 import smtplib
 import logging
+import mimetypes
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -162,13 +164,72 @@ class EmailService:
         except Exception as e:
             logger.error(f"Failed to send approval rejected email: {str(e)}")
             return False
+
+    def send_inhouse_signature_invite_email(
+        self,
+        *,
+        recipient_email: str,
+        recipient_name: str,
+        contract_title: str,
+        signing_url: str,
+        expires_at_iso: str | None = None,
+        sender_name: str | None = None,
+    ) -> bool:
+        """Send an in-house e-sign invite email with a magic signing link."""
+        try:
+            subject = f"✍️ Signature Requested: {contract_title}"
+            html_body = self._get_inhouse_invite_template(
+                recipient_name=recipient_name,
+                contract_title=contract_title,
+                signing_url=signing_url,
+                expires_at_iso=expires_at_iso,
+                sender_name=sender_name,
+            )
+            return self._send_email(
+                recipient_email=recipient_email,
+                subject=subject,
+                html_body=html_body,
+                notification_type='inhouse_esign_invite',
+            )
+        except Exception as e:
+            logger.error(f"Failed to send inhouse invite email: {str(e)}")
+            return False
+
+    def send_inhouse_signing_completed_email(
+        self,
+        *,
+        recipient_email: str,
+        recipient_name: str,
+        contract_title: str,
+        completed_at_iso: str | None,
+        attachments: list[dict],
+    ) -> bool:
+        """Send completion email with executed PDF + certificate attachments."""
+        try:
+            subject = f"✅ Completed: {contract_title}"
+            html_body = self._get_inhouse_completed_template(
+                recipient_name=recipient_name,
+                contract_title=contract_title,
+                completed_at_iso=completed_at_iso,
+            )
+            return self._send_email(
+                recipient_email=recipient_email,
+                subject=subject,
+                html_body=html_body,
+                notification_type='inhouse_esign_completed',
+                attachments=attachments,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send inhouse completion email: {str(e)}")
+            return False
     
     def _send_email(
         self,
         recipient_email: str,
         subject: str,
         html_body: str,
-        notification_type: str = 'general'
+        notification_type: str = 'general',
+        attachments: Optional[List[Dict]] = None,
     ) -> bool:
         """
         Internal method to send email via SMTP
@@ -183,17 +244,47 @@ class EmailService:
             True if sent successfully
         """
         try:
+            attachments = attachments or []
+
             # Create message
-            msg = MIMEMultipart('alternative')
+            # - mixed: allows attachments
+            # - alternative: html/plain body
+            msg = MIMEMultipart('mixed')
             msg['Subject'] = subject
             msg['From'] = self.sender_email
             msg['To'] = recipient_email
             msg['X-Notification-Type'] = notification_type
             msg['X-Timestamp'] = datetime.now().isoformat()
             
-            # Attach HTML body
-            part = MIMEText(html_body, 'html')
-            msg.attach(part)
+            alt = MIMEMultipart('alternative')
+            plain_fallback = "This email requires an HTML-capable client."
+            alt.attach(MIMEText(plain_fallback, 'plain'))
+            alt.attach(MIMEText(html_body, 'html'))
+            msg.attach(alt)
+
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                filename = str(att.get('filename') or '').strip() or 'attachment'
+                content = att.get('content')
+                if content is None:
+                    continue
+                if isinstance(content, str):
+                    content_bytes = content.encode('utf-8')
+                else:
+                    content_bytes = bytes(content)
+
+                content_type = str(att.get('content_type') or '').strip()
+                if not content_type:
+                    guessed, _ = mimetypes.guess_type(filename)
+                    content_type = guessed or 'application/octet-stream'
+
+                maintype, _, subtype = content_type.partition('/')
+                if maintype != 'application':
+                    subtype = 'octet-stream'
+                mime_part = MIMEApplication(content_bytes, _subtype=subtype or 'octet-stream')
+                mime_part.add_header('Content-Disposition', 'attachment', filename=filename)
+                msg.attach(mime_part)
             
             # Send via SMTP
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
@@ -207,6 +298,115 @@ class EmailService:
         except Exception as e:
             logger.error(f"Failed to send email: {str(e)}")
             return False
+
+    def _get_inhouse_invite_template(
+        self,
+        *,
+        recipient_name: str,
+        contract_title: str,
+        signing_url: str,
+        expires_at_iso: str | None,
+        sender_name: str | None,
+    ) -> str:
+        expires_line = (
+            f"<p style=\"margin: 6px 0; color: #555;\"><strong>Link expires:</strong> {expires_at_iso}</p>"
+            if expires_at_iso
+            else ""
+        )
+        sender_line = (
+            f"<p style=\"margin: 6px 0; color: #555;\"><strong>Requested by:</strong> {sender_name}</p>"
+            if sender_name
+            else ""
+        )
+
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset=\"UTF-8\">
+            <style>
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #111; }}
+                .container {{ max-width: 640px; margin: 0 auto; background-color: #f5f5f5; padding: 22px; border-radius: 10px; }}
+                .header {{ background: linear-gradient(135deg, #111827 0%, #4f46e5 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; }}
+                .header h1 {{ margin: 0; font-size: 20px; }}
+                .content {{ background-color: white; padding: 26px; border-radius: 0 0 10px 10px; }}
+                .card {{ background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin: 14px 0; }}
+                .btn {{ display: inline-block; padding: 12px 18px; background: #4f46e5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+                .btn:hover {{ background: #4338ca; text-decoration: none; }}
+                .muted {{ color: #6b7280; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <div class=\"container\">
+                <div class=\"header\">
+                    <h1>Signature requested</h1>
+                </div>
+                <div class=\"content\">
+                    <p>Hi <strong>{recipient_name}</strong>,</p>
+                    <p>You’ve been invited to sign the following contract:</p>
+                    <div class=\"card\">
+                        <p style=\"margin: 6px 0;\"><strong>Contract:</strong> {contract_title}</p>
+                        {sender_line}
+                        {expires_line}
+                    </div>
+                    <p style=\"margin: 18px 0;\">
+                        <a class=\"btn\" href=\"{signing_url}\">Review & Sign</a>
+                    </p>
+                    <p class=\"muted\">If the button doesn’t work, paste this URL into your browser: {signing_url}</p>
+                    <p class=\"muted\">This is an automated message. Please do not reply.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+    def _get_inhouse_completed_template(
+        self,
+        *,
+        recipient_name: str,
+        contract_title: str,
+        completed_at_iso: str | None,
+    ) -> str:
+        completed_line = (
+            f"<p style=\"margin: 6px 0; color: #555;\"><strong>Completed at:</strong> {completed_at_iso}</p>"
+            if completed_at_iso
+            else ""
+        )
+
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset=\"UTF-8\">
+            <style>
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #111; }}
+                .container {{ max-width: 640px; margin: 0 auto; background-color: #f5f5f5; padding: 22px; border-radius: 10px; }}
+                .header {{ background: linear-gradient(135deg, #16a34a 0%, #059669 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; }}
+                .header h1 {{ margin: 0; font-size: 20px; }}
+                .content {{ background-color: white; padding: 26px; border-radius: 0 0 10px 10px; }}
+                .card {{ background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; margin: 14px 0; }}
+                .muted {{ color: #6b7280; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <div class=\"container\">
+                <div class=\"header\">
+                    <h1>Contract fully executed</h1>
+                </div>
+                <div class=\"content\">
+                    <p>Hi <strong>{recipient_name}</strong>,</p>
+                    <p>The contract below has been fully signed and executed.</p>
+                    <div class=\"card\">
+                        <p style=\"margin: 6px 0;\"><strong>Contract:</strong> {contract_title}</p>
+                        {completed_line}
+                    </div>
+                    <p>Attached: executed PDF and completion certificate.</p>
+                    <p class=\"muted\">This is an automated message. Please do not reply.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
     
     def _get_approval_request_template(
         self,

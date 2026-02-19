@@ -4,15 +4,6 @@ import os
 
 
 def init_otel() -> None:
-    """Initialize OpenTelemetry tracing (OTLP).
-
-    Enabled only when `OTEL_ENABLED=1`.
-
-    Recommended env:
-    - OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-    - OTEL_SERVICE_NAME=clm-backend
-    """
-
     enabled = (os.getenv('OTEL_ENABLED', '0') or '').strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
     if not enabled:
         return

@@ -10,6 +10,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load environment variables from this project reliably (do not depend on CWD).
 load_dotenv(dotenv_path=BASE_DIR / '.env', override=False)
 
+# Workspace fallback: some dev setups keep a single .env at the monorepo root.
+# Load it only to fill missing variables.
+_workspace_env = BASE_DIR.parent / '.env'
+if _workspace_env.exists():
+    load_dotenv(dotenv_path=_workspace_env, override=False)
+
 # Backward-compatible fallback: some setups store secrets in contracts/.env.
 # We load it only to fill missing variables (override=False).
 _contracts_env = BASE_DIR / 'contracts' / '.env'

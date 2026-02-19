@@ -661,6 +661,11 @@ class InhouseSignatureContract(models.Model):
     executed_pdf = models.BinaryField(null=True, blank=True)
     executed_pdf_content_type = models.CharField(max_length=100, default='application/pdf')
 
+    # Completion certificate (generated when all signers complete)
+    certificate_pdf = models.BinaryField(null=True, blank=True)
+    certificate_pdf_content_type = models.CharField(max_length=100, default='application/pdf')
+    certificate_generated_at = models.DateTimeField(null=True, blank=True)
+
     signing_request_data = models.JSONField(default=dict, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -713,6 +718,9 @@ class InhouseSigner(models.Model):
     signed_user_agent = models.TextField(null=True, blank=True)
     signed_device_id = models.CharField(max_length=128, null=True, blank=True)
 
+    # Last-used placement for this signer's signature stamp (percent-based)
+    signature_placement = models.JSONField(default=dict, null=True, blank=True)
+
     invited_at = models.DateTimeField(auto_now_add=True)
     last_viewed_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -735,9 +743,12 @@ class InhouseSigner(models.Model):
 class InhouseSigningAuditLog(models.Model):
     EVENT_CHOICES = [
         ('invite_sent', 'Invitation Sent'),
+        ('invite_email_sent', 'Invite Email Sent'),
         ('link_viewed', 'Link Viewed'),
         ('signing_started', 'Signing Started'),
         ('signing_completed', 'Signing Completed'),
+        ('certificate_generated', 'Certificate Generated'),
+        ('completion_email_sent', 'Completion Email Sent'),
         ('signing_declined', 'Signing Declined'),
         ('status_checked', 'Status Checked'),
         ('document_downloaded', 'Document Downloaded'),

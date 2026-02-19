@@ -4,13 +4,6 @@ from rest_framework.throttling import SimpleRateThrottle
 
 
 class TenantUserRateThrottle(SimpleRateThrottle):
-    """Rate limit authenticated callers per (tenant_id, user_id).
-
-    Falls back to IP-based identity when unauthenticated or missing claims.
-
-    Configure rate via REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['tenant_user'].
-    """
-
     scope = "tenant_user"
 
     def get_cache_key(self, request, view):

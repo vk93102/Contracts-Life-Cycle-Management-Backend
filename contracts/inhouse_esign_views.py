@@ -6,7 +6,9 @@ This module implements invite + magic-link signing + audit logging.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -15,6 +17,7 @@ from typing import Any
 from uuid import UUID
 
 from django.conf import settings
+from django.db import transaction
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -35,8 +38,58 @@ from pypdf import PdfReader, PdfWriter
 
 from authentication.r2_service import R2StorageService
 
+from notifications.email_service import EmailService
+
 from .models import Contract, TemplateFile
 from .models import InhouseSignatureContract, InhouseSigner, InhouseSigningAuditLog
+
+
+def _clamp_number(val: Any, min_v: float, max_v: float) -> float:
+    try:
+        n = float(val)
+    except Exception:
+        n = float(min_v)
+    if n < min_v:
+        return float(min_v)
+    if n > max_v:
+        return float(max_v)
+    return float(n)
+
+
+def _placement_from_payload(payload: Any, *, recipient_index: int) -> tuple[Placement, dict] | None:
+    """Parse a placement dict from the client or signer record.
+
+    Expected payload shape:
+      { recipient_index?, page_number, position: {x,y,width,height} }
+    All values are percent-based (0..100) except page_number.
+    """
+
+    if not isinstance(payload, dict):
+        return None
+
+    pos = payload.get('position')
+    if not isinstance(pos, dict):
+        return None
+
+    page_number = int(payload.get('page_number') or 1)
+    page_number = max(1, page_number)
+
+    x = _clamp_number(pos.get('x'), 0, 100)
+    y = _clamp_number(pos.get('y'), 0, 100)
+    width = _clamp_number(pos.get('width'), 1, 100)
+    height = _clamp_number(pos.get('height'), 1, 100)
+
+    # Ensure the box stays within the page
+    width = _clamp_number(width, 1, max(1.0, 100.0 - x))
+    height = _clamp_number(height, 1, max(1.0, 100.0 - y))
+
+    placement = Placement(page_number=page_number, x_pct=x, y_pct=y, w_pct=width, h_pct=height)
+    normalized = {
+        'recipient_index': int(recipient_index),
+        'page_number': int(page_number),
+        'position': {'x': x, 'y': y, 'width': width, 'height': height},
+    }
+    return placement, normalized
 
 
 def _client_ip(request) -> str | None:
@@ -297,6 +350,145 @@ def _frontend_base_url(request) -> str:
     return inferred.strip().rstrip('/')
 
 
+def _owner_display_name(user) -> str:
+    try:
+        first = str(getattr(user, 'first_name', '') or '').strip()
+        last = str(getattr(user, 'last_name', '') or '').strip()
+        full = f"{first} {last}".strip()
+        return full or str(getattr(user, 'email', '') or '').strip() or 'Owner'
+    except Exception:
+        return 'Owner'
+
+
+def _certificate_logo_path() -> str | None:
+    # Optional. If missing, certificate is generated without a logo.
+    for key in (
+        'INHOUSE_CERTIFICATE_LOGO_PATH',
+        'CERTIFICATE_LOGO_PATH',
+        'CERTIFICATE_LOGO_FILE',
+    ):
+        val = getattr(settings, key, None) or os.getenv(key)
+        if isinstance(val, str) and val.strip() and os.path.exists(val.strip()):
+            return val.strip()
+    return None
+
+
+def _generate_certificate_pdf_bytes(
+    *,
+    signing_contract: InhouseSignatureContract,
+    executed_pdf_bytes: bytes,
+) -> bytes:
+    contract = signing_contract.contract
+    title = (getattr(contract, 'title', '') or 'Contract').strip() or 'Contract'
+    completed_at = signing_contract.completed_at or timezone.now()
+
+    exec_sha = hashlib.sha256(executed_pdf_bytes or b'').hexdigest()
+    cert_id = str(signing_contract.id)
+
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=LETTER)
+    page_w, page_h = LETTER
+
+    left = 0.9 * inch
+    right = page_w - 0.9 * inch
+    top = page_h - 0.85 * inch
+
+    # Header
+    c.setFillColorRGB(0.07, 0.09, 0.15)  # slate-ish
+    c.rect(0, page_h - 1.25 * inch, page_w, 1.25 * inch, fill=1, stroke=0)
+    c.setFillColorRGB(1, 1, 1)
+    c.setFont('Helvetica-Bold', 18)
+    c.drawString(left, page_h - 0.75 * inch, 'Certificate of Completion')
+    c.setFont('Helvetica', 10)
+    c.drawString(left, page_h - 1.05 * inch, 'In-house electronic signing')
+
+    logo_path = _certificate_logo_path()
+    if logo_path:
+        try:
+            # Draw logo on the right in header.
+            img = Image.open(logo_path)
+            iw, ih = img.size
+            if iw > 0 and ih > 0:
+                max_w = 1.3 * inch
+                max_h = 0.65 * inch
+                scale = min(max_w / float(iw), max_h / float(ih))
+                draw_w = float(iw) * scale
+                draw_h = float(ih) * scale
+                c.drawImage(
+                    ImageReader(img),
+                    right - draw_w,
+                    page_h - 1.05 * inch,
+                    width=draw_w,
+                    height=draw_h,
+                    mask='auto',
+                )
+        except Exception:
+            pass
+
+    y = page_h - 1.55 * inch
+    c.setFillColorRGB(0, 0, 0)
+
+    def draw_kv(label: str, value: str, y_pos: float) -> float:
+        c.setFont('Helvetica-Bold', 10)
+        c.drawString(left, y_pos, label)
+        c.setFont('Helvetica', 10)
+        c.drawString(left + 140, y_pos, value)
+        return y_pos - 16
+
+    y = draw_kv('Contract', title, y)
+    y = draw_kv('Status', str(signing_contract.status), y)
+    y = draw_kv('Completed At', completed_at.isoformat(), y)
+    y = draw_kv('Certificate ID', cert_id, y)
+    y = draw_kv('Executed PDF SHA-256', exec_sha, y)
+
+    y -= 6
+    c.setFont('Helvetica-Bold', 11)
+    c.drawString(left, y, 'Signers')
+    y -= 14
+
+    signers = list(signing_contract.signers.all().order_by('signing_order', 'recipient_index', 'email'))
+    c.setFont('Helvetica', 10)
+    for s in signers:
+        signed_at = s.signed_at.isoformat() if s.signed_at else '—'
+        line = f"• {s.name} <{s.email}> — {s.status} — signed_at: {signed_at}"
+        if y <= 1.2 * inch:
+            c.showPage()
+            y = top
+        c.drawString(left, y, line[:1400])
+        y -= 14
+
+    y -= 8
+    c.setFont('Helvetica-Bold', 11)
+    c.drawString(left, y, 'Audit Timeline')
+    y -= 14
+
+    logs = list(signing_contract.audit_logs.all().order_by('created_at')[:250])
+    c.setFont('Helvetica', 9)
+    for log in logs:
+        who = log.signer.email if log.signer_id and log.signer else 'system'
+        ip = log.ip_address or ''
+        ts = log.created_at.isoformat()
+        msg = (log.message or '').strip()
+        line = f"{ts} — {log.event} — {who} {('(' + ip + ')') if ip else ''} — {msg}"
+        if y <= 1.2 * inch:
+            c.showPage()
+            y = top
+        # crude wrap
+        import textwrap
+
+        for wl in textwrap.wrap(line, width=110) or ['']:
+            if y <= 1.2 * inch:
+                c.showPage()
+                y = top
+            c.drawString(left, y, wl)
+            y -= 12
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def inhouse_start(request):
@@ -349,6 +541,8 @@ def inhouse_start(request):
         'signing_order': signing_order,
         'expires_in_days': expires_in_days,
         'provider': 'inhouse',
+        'owner_email': str(getattr(request.user, 'email', '') or '').strip() or None,
+        'owner_name': _owner_display_name(request.user),
     }
     sc.save()
     invite_urls = []
@@ -364,6 +558,7 @@ def inhouse_start(request):
         )
 
         url = f"/sign/inhouse?token={signer.access_token}"
+        signing_url = f"{_frontend_base_url(request)}{url}"
         invite_urls.append({'email': signer.email, 'name': signer.name, 'signing_url': url})
         _log_event(
             signing_contract=sc,
@@ -372,6 +567,34 @@ def inhouse_start(request):
             request=request,
             signer=signer,
         )
+
+        # Best-effort email delivery; do not fail request if SMTP fails.
+        try:
+            ok = EmailService().send_inhouse_signature_invite_email(
+                recipient_email=signer.email,
+                recipient_name=signer.name,
+                contract_title=str(contract.title or 'Contract'),
+                signing_url=signing_url,
+                expires_at_iso=sc.expires_at.isoformat() if sc.expires_at else None,
+                sender_name=_owner_display_name(request.user),
+            )
+            _log_event(
+                signing_contract=sc,
+                event='invite_email_sent' if ok else 'error',
+                message=(
+                    f"Invite email sent to {signer.email}" if ok else f"Failed to send invite email to {signer.email}"
+                ),
+                request=request,
+                signer=signer,
+            )
+        except Exception as e:
+            _log_event(
+                signing_contract=sc,
+                event='error',
+                message=f"Invite email exception for {signer.email}: {str(e)}",
+                request=request,
+                signer=signer,
+            )
 
     first_url = invite_urls[0]['signing_url'] if invite_urls else None
 
@@ -458,6 +681,32 @@ def inhouse_download_executed(request, contract_id: str):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def inhouse_download_certificate(request, contract_id: str):
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    sc = get_object_or_404(InhouseSignatureContract, contract=contract)
+
+    if sc.status != 'completed' or not sc.certificate_pdf:
+        return Response({'error': 'Certificate not yet available'}, status=status.HTTP_400_BAD_REQUEST)
+
+    _log_event(
+        signing_contract=sc,
+        event='document_downloaded',
+        message='Certificate downloaded',
+        request=request,
+        extra={'type': 'certificate'},
+    )
+
+    filename = f"{(contract.title or 'contract').strip().replace(' ', '_')}_certificate.pdf"
+    return FileResponse(
+        BytesIO(sc.certificate_pdf),
+        as_attachment=True,
+        filename=filename,
+        content_type='application/pdf',
+    )
+
+
+@api_view(['GET'])
 @permission_classes([AllowAny])
 def inhouse_session(request, token: UUID):
     signer = get_object_or_404(InhouseSigner, access_token=token)
@@ -486,7 +735,29 @@ def inhouse_session(request, token: UUID):
 
     contract = sc.contract
     pdf_bytes = sc.executed_pdf or _generate_contract_pdf_bytes(contract)
-    placement = _resolve_signature_placement(contract, signer.recipient_index, pdf_bytes=pdf_bytes)
+
+    # Prefer signer-chosen placement if present; otherwise fall back to template/default.
+    placement_from_signer = None
+    if isinstance(signer.signature_placement, dict) and signer.signature_placement:
+        try:
+            placement_from_signer = _placement_from_payload(signer.signature_placement, recipient_index=signer.recipient_index)
+        except Exception:
+            placement_from_signer = None
+
+    if placement_from_signer:
+        placement, normalized_payload = placement_from_signer
+    else:
+        placement = _resolve_signature_placement(contract, signer.recipient_index, pdf_bytes=pdf_bytes)
+        normalized_payload = {
+            'recipient_index': signer.recipient_index,
+            'page_number': placement.page_number,
+            'position': {
+                'x': placement.x_pct,
+                'y': placement.y_pct,
+                'width': placement.w_pct,
+                'height': placement.h_pct,
+            },
+        }
 
     return Response(
         {
@@ -501,16 +772,7 @@ def inhouse_session(request, token: UUID):
                 'status': signer.status,
             },
             'pdf_url': f"/api/v1/inhouse/esign/pdf/{signer.access_token}/",
-            'placement': {
-                'recipient_index': signer.recipient_index,
-                'page_number': placement.page_number,
-                'position': {
-                    'x': placement.x_pct,
-                    'y': placement.y_pct,
-                    'width': placement.w_pct,
-                    'height': placement.h_pct,
-                },
-            },
+            'placement': normalized_payload,
         },
         status=status.HTTP_200_OK,
     )
@@ -549,109 +811,234 @@ def inhouse_pdf(request, token: UUID):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def inhouse_sign(request, token: UUID):
-    signer = get_object_or_404(InhouseSigner, access_token=token)
-    sc = signer.inhouse_signature_contract
-
-    if signer.token_expires_at and signer.token_expires_at <= timezone.now():
-        return Response({'error': 'Signing link expired'}, status=status.HTTP_410_GONE)
-
-    if signer.has_signed:
-        return Response({'error': 'Already signed'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if sc.signing_order == 'sequential':
-        next_signer = (
-            sc.signers.filter(has_signed=False)
-            .exclude(status='declined')
-            .order_by('signing_order', 'recipient_index')
-            .first()
+    # Lock the signing contract row to prevent parallel signers overwriting executed_pdf.
+    with transaction.atomic():
+        signer = get_object_or_404(InhouseSigner.objects.select_for_update(), access_token=token)
+        sc = get_object_or_404(
+            InhouseSignatureContract.objects.select_for_update(),
+            id=signer.inhouse_signature_contract_id,
         )
-        if next_signer and next_signer.id != signer.id:
+
+        if signer.token_expires_at and signer.token_expires_at <= timezone.now():
+            return Response({'error': 'Signing link expired'}, status=status.HTTP_410_GONE)
+
+        if signer.has_signed:
+            return Response({'error': 'Already signed'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if sc.signing_order == 'sequential':
+            next_signer = (
+                sc.signers.filter(has_signed=False)
+                .exclude(status='declined')
+                .order_by('signing_order', 'recipient_index')
+                .first()
+            )
+            if next_signer and next_signer.id != signer.id:
+                _log_event(
+                    signing_contract=sc,
+                    event='error',
+                    message='Signer attempted to sign out of order',
+                    request=request,
+                    signer=signer,
+                    extra={'expected_signer_email': next_signer.email},
+                )
+                return Response({'error': 'Not your turn to sign'}, status=status.HTTP_403_FORBIDDEN)
+
+        signature_data_url = request.data.get('signature_data_url')
+        if not signature_data_url:
+            return Response({'error': 'signature_data_url is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            png = _parse_data_url_png(signature_data_url)
+        except Exception as e:
+            return Response({'error': f'Invalid signature image: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        contract = sc.contract
+
+        base_pdf = sc.executed_pdf or _generate_contract_pdf_bytes(contract)
+
+        # Placement precedence: request payload > saved signer placement > template/default.
+        requested_payload = request.data.get('placement')
+        placement = None
+        normalized_payload = None
+
+        if requested_payload is not None:
+            parsed = _placement_from_payload(requested_payload, recipient_index=signer.recipient_index)
+            if not parsed:
+                return Response({'error': 'Invalid placement'}, status=status.HTTP_400_BAD_REQUEST)
+            placement, normalized_payload = parsed
+            signer.signature_placement = normalized_payload
+            signer.save(update_fields=['signature_placement', 'updated_at'])
+        elif isinstance(signer.signature_placement, dict) and signer.signature_placement:
+            parsed = _placement_from_payload(signer.signature_placement, recipient_index=signer.recipient_index)
+            if parsed:
+                placement, normalized_payload = parsed
+
+        if not placement:
+            placement = _resolve_signature_placement(contract, signer.recipient_index, pdf_bytes=base_pdf)
+            normalized_payload = {
+                'recipient_index': signer.recipient_index,
+                'page_number': placement.page_number,
+                'position': {
+                    'x': placement.x_pct,
+                    'y': placement.y_pct,
+                    'width': placement.w_pct,
+                    'height': placement.h_pct,
+                },
+            }
+
+        try:
+            next_pdf = _stamp_signature_on_pdf(base_pdf, signature_png=png, placement=placement)
+        except Exception as e:
             _log_event(
                 signing_contract=sc,
                 event='error',
-                message='Signer attempted to sign out of order',
+                message=f"Failed to stamp signature: {str(e)}",
                 request=request,
                 signer=signer,
-                extra={'expected_signer_email': next_signer.email},
             )
-            return Response({'error': 'Not your turn to sign'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Failed to apply signature'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    signature_data_url = request.data.get('signature_data_url')
-    if not signature_data_url:
-        return Response({'error': 'signature_data_url is required'}, status=status.HTTP_400_BAD_REQUEST)
+        signer.signature_png = png
+        signer.signature_mime = 'image/png'
+        signer.status = 'signed'
+        signer.has_signed = True
+        signer.signed_at = timezone.now()
+        signer.signed_ip_address = _client_ip(request)
+        signer.signed_user_agent = _user_agent(request)
+        signer.signed_device_id = _device_id(request)
+        signer.save()
 
-    try:
-        png = _parse_data_url_png(signature_data_url)
-    except Exception as e:
-        return Response({'error': f'Invalid signature image: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        sc.executed_pdf = next_pdf
+        sc.last_activity_at = timezone.now()
 
-    contract = sc.contract
+        # Check completion
+        remaining = sc.signers.filter(has_signed=False).count()
+        just_completed = False
+        if remaining == 0 and sc.status != 'completed':
+            sc.status = 'completed'
+            sc.completed_at = timezone.now()
+            just_completed = True
+            try:
+                contract.status = 'executed'
+                contract.save(update_fields=['status', 'updated_at'])
+            except Exception:
+                pass
 
-    base_pdf = sc.executed_pdf or _generate_contract_pdf_bytes(contract)
-    placement = _resolve_signature_placement(contract, signer.recipient_index, pdf_bytes=base_pdf)
+        sc.save()
 
-    try:
-        next_pdf = _stamp_signature_on_pdf(base_pdf, signature_png=png, placement=placement)
-    except Exception as e:
         _log_event(
             signing_contract=sc,
-            event='error',
-            message=f"Failed to stamp signature: {str(e)}",
+            event='signing_completed',
+            message=f"Signer completed: {signer.email}",
             request=request,
             signer=signer,
+            extra={'placement': normalized_payload},
         )
-        return Response({'error': 'Failed to apply signature'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    signer.signature_png = png
-    signer.signature_mime = 'image/png'
-    signer.status = 'signed'
-    signer.has_signed = True
-    signer.signed_at = timezone.now()
-    signer.signed_ip_address = _client_ip(request)
-    signer.signed_user_agent = _user_agent(request)
-    signer.signed_device_id = _device_id(request)
-    signer.save()
+        # If fully completed, generate certificate and email executed + certificate to everyone.
+        if just_completed:
+            try:
+                if not sc.certificate_pdf:
+                    cert_bytes = _generate_certificate_pdf_bytes(signing_contract=sc, executed_pdf_bytes=sc.executed_pdf or b'')
+                    sc.certificate_pdf = cert_bytes
+                    sc.certificate_generated_at = timezone.now()
+                    sc.save(update_fields=['certificate_pdf', 'certificate_generated_at', 'updated_at'])
+                    _log_event(
+                        signing_contract=sc,
+                        event='certificate_generated',
+                        message='Completion certificate generated',
+                        request=request,
+                    )
+            except Exception as e:
+                _log_event(
+                    signing_contract=sc,
+                    event='error',
+                    message=f"Certificate generation failed: {str(e)}",
+                    request=request,
+                )
 
-    sc.executed_pdf = next_pdf
-    sc.last_activity_at = timezone.now()
+            # Send emails after the transaction commits to avoid holding locks during SMTP.
+            try:
+                owner_email = None
+                owner_name = None
+                if isinstance(sc.signing_request_data, dict):
+                    owner_email = sc.signing_request_data.get('owner_email')
+                    owner_name = sc.signing_request_data.get('owner_name')
+                owner_email = str(owner_email or '').strip() or None
+                owner_name = str(owner_name or '').strip() or None
 
-    # Check completion
-    remaining = sc.signers.filter(has_signed=False).count()
-    if remaining == 0:
-        sc.status = 'completed'
-        sc.completed_at = timezone.now()
-        try:
-            contract.status = 'executed'
-            contract.save(update_fields=['status', 'updated_at'])
-        except Exception:
-            pass
+                executed_filename = f"{(contract.title or 'contract').strip().replace(' ', '_')}_signed.pdf"
+                cert_filename = f"{(contract.title or 'contract').strip().replace(' ', '_')}_certificate.pdf"
 
-    sc.save()
+                attachments = [
+                    {
+                        'filename': executed_filename,
+                        'content_type': 'application/pdf',
+                        'content': sc.executed_pdf or b'',
+                    },
+                    {
+                        'filename': cert_filename,
+                        'content_type': 'application/pdf',
+                        'content': sc.certificate_pdf or b'',
+                    },
+                ]
 
-    _log_event(
-        signing_contract=sc,
-        event='signing_completed',
-        message=f"Signer completed: {signer.email}",
-        request=request,
-        signer=signer,
-        extra={
-            'recipient_index': signer.recipient_index,
-            'page_number': placement.page_number,
-            'position': {
-                'x': placement.x_pct,
-                'y': placement.y_pct,
-                'width': placement.w_pct,
-                'height': placement.h_pct,
+                recipients: list[tuple[str, str]] = []
+                for s in sc.signers.all().order_by('recipient_index', 'email'):
+                    recipients.append((s.email, s.name or s.email))
+                if owner_email:
+                    recipients.append((owner_email, owner_name or owner_email))
+
+                contract_title = str(contract.title or 'Contract')
+                completed_at_iso = sc.completed_at.isoformat() if sc.completed_at else None
+
+                def _send_after_commit():
+                    try:
+                        svc = EmailService()
+                        for email, name in recipients:
+                            if not email:
+                                continue
+                            ok = svc.send_inhouse_signing_completed_email(
+                                recipient_email=email,
+                                recipient_name=name,
+                                contract_title=contract_title,
+                                completed_at_iso=completed_at_iso,
+                                attachments=attachments,
+                            )
+                            _log_event(
+                                signing_contract=sc,
+                                event='completion_email_sent' if ok else 'error',
+                                message=(
+                                    f"Completion email sent to {email}"
+                                    if ok
+                                    else f"Failed to send completion email to {email}"
+                                ),
+                                request=request,
+                                extra={'recipient_email': email},
+                            )
+                    except Exception as e:
+                        _log_event(
+                            signing_contract=sc,
+                            event='error',
+                            message=f"Completion email pipeline failed: {str(e)}",
+                            request=request,
+                        )
+
+                transaction.on_commit(_send_after_commit)
+            except Exception as e:
+                _log_event(
+                    signing_contract=sc,
+                    event='error',
+                    message=f"Completion email scheduling failed: {str(e)}",
+                    request=request,
+                )
+
+        return Response(
+            {
+                'success': True,
+                'contract_id': str(contract.id),
+                'status': sc.status,
+                'all_signed': remaining == 0,
             },
-        },
-    )
-
-    return Response(
-        {
-            'success': True,
-            'contract_id': str(contract.id),
-            'status': sc.status,
-            'all_signed': remaining == 0,
-        },
-        status=status.HTTP_200_OK,
-    )
+            status=status.HTTP_200_OK,
+        )
