@@ -341,13 +341,21 @@ def _stamp_signature_on_pdf(base_pdf: bytes, *, signature_png: bytes, placement:
 
 
 def _frontend_base_url(request) -> str:
-    # Prefer explicit config; otherwise infer from request.
+    # Prefer explicit config; otherwise use the request Origin (frontend),
+    # and finally fall back to localhost dev.
     base = getattr(settings, 'FRONTEND_BASE_URL', None)
     if isinstance(base, str) and base.strip():
         return base.strip().rstrip('/')
 
-    inferred = request.build_absolute_uri('/')
-    return inferred.strip().rstrip('/')
+    env_base = (os.getenv('FRONTEND_BASE_URL') or os.getenv('APP_URL') or '').strip()
+    if env_base:
+        return env_base.rstrip('/')
+
+    origin = (request.META.get('HTTP_ORIGIN') or '').strip()
+    if origin:
+        return origin.rstrip('/')
+
+    return 'http://localhost:3000'
 
 
 def _owner_display_name(user) -> str:
@@ -378,9 +386,11 @@ def _generate_certificate_pdf_bytes(
     signing_contract: InhouseSignatureContract,
     executed_pdf_bytes: bytes,
 ) -> bytes:
+    """Generate a structured, professional completion certificate PDF."""
+
     contract = signing_contract.contract
     title = (getattr(contract, 'title', '') or 'Contract').strip() or 'Contract'
-    completed_at = signing_contract.completed_at or timezone.now()
+    completed_at = (signing_contract.completed_at or timezone.now()).replace(microsecond=0)
 
     exec_sha = hashlib.sha256(executed_pdf_bytes or b'').hexdigest()
     cert_id = str(signing_contract.id)
@@ -389,99 +399,253 @@ def _generate_certificate_pdf_bytes(
     c = canvas.Canvas(buffer, pagesize=LETTER)
     page_w, page_h = LETTER
 
-    left = 0.9 * inch
-    right = page_w - 0.9 * inch
-    top = page_h - 0.85 * inch
+    margin_x = 0.75 * inch
+    left = margin_x
+    right = page_w - margin_x
+    top = page_h - 0.7 * inch
+    bottom = 0.7 * inch
 
-    # Header
-    c.setFillColorRGB(0.07, 0.09, 0.15)  # slate-ish
-    c.rect(0, page_h - 1.25 * inch, page_w, 1.25 * inch, fill=1, stroke=0)
+    def new_page() -> float:
+        c.showPage()
+        return top
+
+    def ensure_space(y: float, needed: float) -> float:
+        if y - needed <= bottom:
+            return new_page()
+        return y
+
+    # --- Header ---
+    header_h = 1.05 * inch
+    c.setFillColorRGB(0.07, 0.09, 0.15)
+    c.rect(0, page_h - header_h, page_w, header_h, fill=1, stroke=0)
+
+    # Title
     c.setFillColorRGB(1, 1, 1)
-    c.setFont('Helvetica-Bold', 18)
-    c.drawString(left, page_h - 0.75 * inch, 'Certificate of Completion')
+    c.setFont('Helvetica-Bold', 19)
+    c.drawString(left, page_h - 0.58 * inch, 'Certificate of Completion')
     c.setFont('Helvetica', 10)
-    c.drawString(left, page_h - 1.05 * inch, 'In-house electronic signing')
+    c.drawString(left, page_h - 0.86 * inch, 'In-house Electronic Signing (Audit Trail Included)')
 
+    # Logo (optional)
     logo_path = _certificate_logo_path()
     if logo_path:
         try:
-            # Draw logo on the right in header.
             img = Image.open(logo_path)
             iw, ih = img.size
             if iw > 0 and ih > 0:
-                max_w = 1.3 * inch
-                max_h = 0.65 * inch
+                max_w = 1.45 * inch
+                max_h = 0.55 * inch
                 scale = min(max_w / float(iw), max_h / float(ih))
                 draw_w = float(iw) * scale
                 draw_h = float(ih) * scale
                 c.drawImage(
                     ImageReader(img),
                     right - draw_w,
-                    page_h - 1.05 * inch,
+                    page_h - 0.90 * inch,
                     width=draw_w,
                     height=draw_h,
                     mask='auto',
                 )
         except Exception:
             pass
+    else:
+        # Vector mark fallback, so the certificate doesn't look "blank".
+        c.setFillColorRGB(1, 1, 1)
+        c.circle(right - 22, page_h - 0.68 * inch, 16, stroke=0, fill=1)
+        c.setFillColorRGB(0.07, 0.09, 0.15)
+        c.setFont('Helvetica-Bold', 9)
+        c.drawCentredString(right - 22, page_h - 0.71 * inch, 'CLM')
 
-    y = page_h - 1.55 * inch
-    c.setFillColorRGB(0, 0, 0)
+    # --- Summary card ---
+    y = page_h - header_h - 0.35 * inch
+    y = ensure_space(y, 120)
 
-    def draw_kv(label: str, value: str, y_pos: float) -> float:
-        c.setFont('Helvetica-Bold', 10)
-        c.drawString(left, y_pos, label)
-        c.setFont('Helvetica', 10)
-        c.drawString(left + 140, y_pos, value)
-        return y_pos - 16
+    card_h = 92
+    c.setFillColorRGB(0.97, 0.98, 1.0)
+    c.setStrokeColorRGB(0.85, 0.89, 0.97)
+    c.roundRect(left, y - card_h, right - left, card_h, 10, stroke=1, fill=1)
 
-    y = draw_kv('Contract', title, y)
-    y = draw_kv('Status', str(signing_contract.status), y)
-    y = draw_kv('Completed At', completed_at.isoformat(), y)
-    y = draw_kv('Certificate ID', cert_id, y)
-    y = draw_kv('Executed PDF SHA-256', exec_sha, y)
+    c.setFillColorRGB(0.10, 0.15, 0.35)
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(left + 14, y - 22, title[:120])
 
-    y -= 6
-    c.setFont('Helvetica-Bold', 11)
-    c.drawString(left, y, 'Signers')
-    y -= 14
+    c.setFillColorRGB(0.15, 0.15, 0.15)
+    c.setFont('Helvetica', 9)
+    c.drawString(left + 14, y - 40, f"Status: {signing_contract.status}")
+    c.drawString(left + 14, y - 54, f"Completed (UTC): {completed_at.isoformat()}")
+    c.drawString(left + 14, y - 68, f"Certificate ID: {cert_id}")
+
+    # Right column
+    c.drawString(left + 320, y - 40, f"Signing Order: {signing_contract.signing_order}")
+    c.drawString(left + 320, y - 54, f"Contract ID: {str(contract.id)}")
+    c.drawString(left + 320, y - 68, f"Executed PDF SHA-256: {exec_sha[:32]}…")
+
+    y = y - card_h - 18
+
+    # --- Signers table ---
+    import textwrap
 
     signers = list(signing_contract.signers.all().order_by('signing_order', 'recipient_index', 'email'))
-    c.setFont('Helvetica', 10)
-    for s in signers:
-        signed_at = s.signed_at.isoformat() if s.signed_at else '—'
-        line = f"• {s.name} <{s.email}> — {s.status} — signed_at: {signed_at}"
-        if y <= 1.2 * inch:
-            c.showPage()
-            y = top
-        c.drawString(left, y, line[:1400])
-        y -= 14
+    y = ensure_space(y, 90)
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(left, y, 'Signers')
+    y -= 12
+    c.setFont('Helvetica', 9)
+    c.setFillColorRGB(0.38, 0.38, 0.40)
+    c.drawString(left, y, f"Total signers: {len(signers)}")
+    y -= 16
 
-    y -= 8
-    c.setFont('Helvetica-Bold', 11)
+    table_w = right - left
+    col_num = 28
+    col_name = 140
+    col_email = 190
+    col_status = 70
+    col_signed = table_w - (col_num + col_name + col_email + col_status)
+
+    def draw_table_header(y_pos: float) -> float:
+        c.setFillColorRGB(0.94, 0.95, 0.97)
+        c.setStrokeColorRGB(0.85, 0.85, 0.88)
+        c.rect(left, y_pos - 16, table_w, 16, stroke=1, fill=1)
+        c.setFillColorRGB(0.12, 0.12, 0.14)
+        c.setFont('Helvetica-Bold', 8)
+        c.drawString(left + 6, y_pos - 12, '#')
+        c.drawString(left + col_num + 6, y_pos - 12, 'Name')
+        c.drawString(left + col_num + col_name + 6, y_pos - 12, 'Email')
+        c.drawString(left + col_num + col_name + col_email + 6, y_pos - 12, 'Status')
+        c.drawString(left + col_num + col_name + col_email + col_status + 6, y_pos - 12, 'Signed At (UTC)')
+        return y_pos - 16
+
+    y = draw_table_header(y)
+    c.setFont('Helvetica', 8)
+    c.setFillColorRGB(0.15, 0.15, 0.15)
+
+    row_h = 14
+    for i, s in enumerate(signers, start=1):
+        y = ensure_space(y, row_h + 24)
+        if y == top:
+            # New page, repeat section title + header
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(left, y, 'Signers (continued)')
+            y -= 18
+            y = draw_table_header(y)
+            c.setFont('Helvetica', 8)
+            c.setFillColorRGB(0.15, 0.15, 0.15)
+
+        if i % 2 == 0:
+            c.setFillColorRGB(0.985, 0.985, 0.99)
+            c.rect(left, y - row_h, table_w, row_h, stroke=0, fill=1)
+            c.setFillColorRGB(0.15, 0.15, 0.15)
+
+        signed_at = s.signed_at.replace(microsecond=0).isoformat() if s.signed_at else '—'
+        c.drawString(left + 6, y - 10, str(i))
+        c.drawString(left + col_num + 6, y - 10, (s.name or '').strip()[:24])
+        c.drawString(left + col_num + col_name + 6, y - 10, (s.email or '').strip()[:32])
+        c.drawString(left + col_num + col_name + col_email + 6, y - 10, (s.status or '').strip())
+        c.drawString(left + col_num + col_name + col_email + col_status + 6, y - 10, signed_at)
+        y -= row_h
+
+    y -= 18
+
+    # --- Audit timeline ---
+    y = ensure_space(y, 80)
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont('Helvetica-Bold', 12)
     c.drawString(left, y, 'Audit Timeline')
+    y -= 16
+    c.setFont('Helvetica', 9)
+    c.setFillColorRGB(0.38, 0.38, 0.40)
+    c.drawString(left, y, 'Chronological activity log captured during the signing flow.')
     y -= 14
 
     logs = list(signing_contract.audit_logs.all().order_by('created_at')[:250])
-    c.setFont('Helvetica', 9)
-    for log in logs:
-        who = log.signer.email if log.signer_id and log.signer else 'system'
-        ip = log.ip_address or ''
-        ts = log.created_at.isoformat()
-        msg = (log.message or '').strip()
-        line = f"{ts} — {log.event} — {who} {('(' + ip + ')') if ip else ''} — {msg}"
-        if y <= 1.2 * inch:
-            c.showPage()
-            y = top
-        # crude wrap
-        import textwrap
 
-        for wl in textwrap.wrap(line, width=110) or ['']:
-            if y <= 1.2 * inch:
-                c.showPage()
-                y = top
-            c.drawString(left, y, wl)
-            y -= 12
+    # Timeline header
+    y = ensure_space(y, 22)
+    c.setFillColorRGB(0.94, 0.95, 0.97)
+    c.setStrokeColorRGB(0.85, 0.85, 0.88)
+    c.rect(left, y - 16, table_w, 16, stroke=1, fill=1)
+    c.setFillColorRGB(0.12, 0.12, 0.14)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(left + 6, y - 12, 'Timestamp (UTC)')
+    c.drawString(left + 128, y - 12, 'Event')
+    c.drawString(left + 240, y - 12, 'Actor')
+    c.drawString(left + 360, y - 12, 'IP')
+    c.drawString(left + 420, y - 12, 'Message')
+    y -= 18
+
+    c.setFont('Helvetica', 8)
+    c.setFillColorRGB(0.15, 0.15, 0.15)
+
+    for idx, log in enumerate(logs, start=1):
+        ts = log.created_at.replace(microsecond=0).isoformat() if log.created_at else ''
+        actor = (log.signer.email if log.signer_id and log.signer else 'system')
+        ip = (log.ip_address or '').strip()
+        msg = (log.message or '').strip()
+
+        msg_lines = textwrap.wrap(msg, width=52) or ['']
+        row_needed = 12 * len(msg_lines) + 4
+        y = ensure_space(y, row_needed + 20)
+        if y == top:
+            # New page; repeat timeline header
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(left, y, 'Audit Timeline (continued)')
+            y -= 18
+            c.setFillColorRGB(0.94, 0.95, 0.97)
+            c.setStrokeColorRGB(0.85, 0.85, 0.88)
+            c.rect(left, y - 16, table_w, 16, stroke=1, fill=1)
+            c.setFillColorRGB(0.12, 0.12, 0.14)
+            c.setFont('Helvetica-Bold', 8)
+            c.drawString(left + 6, y - 12, 'Timestamp (UTC)')
+            c.drawString(left + 128, y - 12, 'Event')
+            c.drawString(left + 240, y - 12, 'Actor')
+            c.drawString(left + 360, y - 12, 'IP')
+            c.drawString(left + 420, y - 12, 'Message')
+            y -= 18
+            c.setFont('Helvetica', 8)
+            c.setFillColorRGB(0.15, 0.15, 0.15)
+
+        if idx % 2 == 0:
+            c.setFillColorRGB(0.985, 0.985, 0.99)
+            c.rect(left, y - row_needed + 4, table_w, row_needed, stroke=0, fill=1)
+            c.setFillColorRGB(0.15, 0.15, 0.15)
+
+        c.drawString(left + 6, y - 10, ts)
+        c.drawString(left + 128, y - 10, (log.event or '')[:18])
+        c.drawString(left + 240, y - 10, actor[:18])
+        c.drawString(left + 360, y - 10, ip[:16])
+
+        msg_y = y - 10
+        for ml in msg_lines:
+            c.drawString(left + 420, msg_y, ml)
+            msg_y -= 12
+
+        y = msg_y - 6
+
+    # --- Verification + Footer ---
+    y -= 10
+    y = ensure_space(y, 60)
+    c.setFillColorRGB(0.10, 0.10, 0.10)
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(left, y, 'Verification')
+    y -= 14
+    c.setFont('Helvetica', 9)
+    c.setFillColorRGB(0.20, 0.20, 0.20)
+    verify_text = (
+        'This certificate summarizes the signing activity and references the executed PDF hash shown above. '
+        'The audit timeline records key actions including invites, views, and signature completion.'
+    )
+    for wl in textwrap.wrap(verify_text, width=105):
+        y = ensure_space(y, 14)
+        c.drawString(left, y, wl)
+        y -= 12
+
+    c.setFont('Helvetica', 8)
+    c.setFillColorRGB(0.45, 0.45, 0.45)
+    c.drawString(left, 0.45 * inch, f"Generated: {timezone.now().replace(microsecond=0).isoformat()} UTC")
+    c.drawRightString(right, 0.45 * inch, 'CLM • In-house e-sign')
 
     c.showPage()
     c.save()
@@ -524,11 +688,25 @@ def inhouse_start(request):
     if sc.status in ('sent', 'in_progress', 'completed', 'declined', 'failed'):
         sc.status = 'draft'
         sc.executed_pdf = None
+        sc.certificate_pdf = None
+        sc.certificate_generated_at = None
         sc.signing_request_data = {}
         sc.sent_at = None
         sc.completed_at = None
         sc.last_activity_at = None
-        sc.save(update_fields=['status', 'executed_pdf', 'signing_request_data', 'sent_at', 'completed_at', 'last_activity_at', 'updated_at'])
+        sc.save(
+            update_fields=[
+                'status',
+                'executed_pdf',
+                'certificate_pdf',
+                'certificate_generated_at',
+                'signing_request_data',
+                'sent_at',
+                'completed_at',
+                'last_activity_at',
+                'updated_at',
+            ]
+        )
         sc.signers.all().delete()
 
     sc.status = 'sent'
@@ -559,7 +737,16 @@ def inhouse_start(request):
 
         url = f"/sign/inhouse?token={signer.access_token}"
         signing_url = f"{_frontend_base_url(request)}{url}"
-        invite_urls.append({'email': signer.email, 'name': signer.name, 'signing_url': url})
+        invite_urls.append(
+            {
+                'email': signer.email,
+                'name': signer.name,
+                # Backward-compatible relative path
+                'signing_url': url,
+                # Full URL for copy/paste outside the frontend app
+                'signing_url_full': signing_url,
+            }
+        )
         _log_event(
             signing_contract=sc,
             event='invite_sent',

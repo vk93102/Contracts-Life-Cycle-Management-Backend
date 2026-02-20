@@ -564,6 +564,9 @@ SERVER_EMAIL = os.getenv('SERVER_EMAIL', EMAIL_HOST_USER)
 if SECURITY_STRICT and (not DEBUG) and (not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD):
     raise RuntimeError('Email credentials must be set when SECURITY_STRICT is enabled')
 
+# Frontend base URL (used for emails and signer magic links)
+FRONTEND_BASE_URL = (os.getenv('FRONTEND_BASE_URL') or os.getenv('APP_URL') or 'http://localhost:3000').strip().rstrip('/')
+
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')

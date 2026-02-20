@@ -4,11 +4,6 @@ from drf_spectacular.openapi import AutoSchema
 
 
 class FeatureAutoSchema(AutoSchema):
-    """Auto-tag OpenAPI operations by feature/module.
-
-    This keeps Swagger grouped by "feature" without manually decorating every view.
-    """
-
     MODULE_TAGS: list[tuple[str, str]] = [
         ('authentication.', 'Authentication'),
         ('contracts.', 'Contracts'),

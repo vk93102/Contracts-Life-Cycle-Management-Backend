@@ -28,9 +28,22 @@ class EmailService:
         """Initialize email service with SMTP configuration"""
         self.smtp_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('EMAIL_PORT', 587))
-        self.sender_email = os.getenv('EMAIL_HOST_USER', 'noreply@example.com')
-        self.sender_password = os.getenv('EMAIL_HOST_PASSWORD', '')
-        self.app_url = os.getenv('APP_URL', 'http://localhost:8000')
+        self.sender_email = (
+            (os.getenv('EMAIL_HOST_USER') or '').strip()
+            or (os.getenv('GMAIL') or '').strip()
+            or (os.getenv('DEFAULT_FROM_EMAIL') or '').strip()
+            or 'noreply@example.com'
+        )
+        self.sender_password = (
+            (os.getenv('EMAIL_HOST_PASSWORD') or '').strip()
+            or (os.getenv('APP_PASSWORD') or '').strip()
+        )
+        # `app_url` is intended to be the *frontend* URL for clickable links.
+        self.app_url = (
+            (os.getenv('FRONTEND_BASE_URL') or '').strip()
+            or (os.getenv('APP_URL') or '').strip()
+            or 'http://localhost:3000'
+        ).rstrip('/')
     
     def send_approval_request_email(
         self,
