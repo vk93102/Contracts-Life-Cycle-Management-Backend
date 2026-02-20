@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 from io import BytesIO
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -347,13 +349,27 @@ def _frontend_base_url(request) -> str:
     if isinstance(base, str) and base.strip():
         return base.strip().rstrip('/')
 
-    env_base = (os.getenv('FRONTEND_BASE_URL') or os.getenv('APP_URL') or '').strip()
-    if env_base:
-        return env_base.rstrip('/')
+    env_frontend = (os.getenv('FRONTEND_BASE_URL') or '').strip()
+    if env_frontend:
+        return env_frontend.rstrip('/')
 
     origin = (request.META.get('HTTP_ORIGIN') or '').strip()
     if origin:
         return origin.rstrip('/')
+
+    env_app = (os.getenv('APP_URL') or '').strip()
+    if env_app:
+        # Common local-dev misconfig: APP_URL points at backend (8000).
+        # If no explicit FRONTEND_BASE_URL or request Origin is present, prefer frontend (3000).
+        try:
+            parsed = urlparse(env_app)
+            host = (parsed.hostname or '').lower()
+            port = parsed.port
+            if host in {'localhost', '127.0.0.1'} and port == 8000:
+                return 'http://localhost:3000'
+        except Exception:
+            pass
+        return env_app.rstrip('/')
 
     return 'http://localhost:3000'
 
@@ -844,6 +860,165 @@ def inhouse_status(request, contract_id: str):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def inhouse_audit(request, contract_id: str):
+    """Return audit logs for an in-house signing request (tenant scoped)."""
+
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    sc = get_object_or_404(InhouseSignatureContract, contract=contract)
+
+    try:
+        limit = int(request.query_params.get('limit') or 200)
+    except Exception:
+        limit = 200
+    limit = max(1, min(500, limit))
+
+    logs_qs = (
+        InhouseSigningAuditLog.objects.select_related('signer')
+        .filter(inhouse_signature_contract=sc)
+        .order_by('-created_at')[:limit]
+    )
+
+    logs = []
+    for row in logs_qs:
+        signer = getattr(row, 'signer', None)
+        logs.append(
+            {
+                'id': str(row.id),
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+                'event': row.event,
+                'message': row.message,
+                'ip_address': row.ip_address,
+                'user_agent': row.user_agent,
+                'extra': row.extra,
+                'signer': (
+                    {
+                        'email': signer.email,
+                        'name': signer.name,
+                        'recipient_index': signer.recipient_index,
+                    }
+                    if signer
+                    else None
+                ),
+            }
+        )
+
+    return Response(
+        {
+            'success': True,
+            'contract_id': str(contract.id),
+            'logs': logs,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def inhouse_requests(request):
+    """List in-house signing requests for the current tenant.
+
+    Query params:
+      - status: draft|sent|in_progress|completed|declined|failed|all
+      - q: free-text search across contract title and signer name/email
+      - limit: page size (default 50, max 200)
+      - offset: pagination offset (default 0)
+    """
+
+    allowed_statuses = {'draft', 'sent', 'in_progress', 'completed', 'declined', 'failed'}
+
+    status_filter = str(request.query_params.get('status') or '').strip().lower()
+    q = str(request.query_params.get('q') or '').strip()
+
+    try:
+        limit = int(request.query_params.get('limit') or 50)
+    except Exception:
+        limit = 50
+    try:
+        offset = int(request.query_params.get('offset') or 0)
+    except Exception:
+        offset = 0
+
+    limit = max(1, min(200, limit))
+    offset = max(0, offset)
+
+    if status_filter and status_filter != 'all' and status_filter not in allowed_statuses:
+        return Response({'error': 'Invalid status filter'}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = (
+        InhouseSignatureContract.objects.select_related('contract')
+        .prefetch_related('signers')
+        .filter(contract__tenant_id=request.user.tenant_id)
+    )
+
+    if status_filter and status_filter != 'all':
+        qs = qs.filter(status=status_filter)
+
+    if q:
+        qs = qs.filter(
+            Q(contract__title__icontains=q)
+            | Q(signers__email__icontains=q)
+            | Q(signers__name__icontains=q)
+        ).distinct()
+
+    total = qs.count()
+    qs = qs.order_by('-updated_at')
+
+    results = []
+    for sc in qs[offset : offset + limit]:
+        contract = sc.contract
+        signers = []
+        for signer in sc.signers.all().order_by('recipient_index', 'email'):
+            signers.append(
+                {
+                    'email': signer.email,
+                    'name': signer.name,
+                    'status': signer.status,
+                    'signed_at': signer.signed_at.isoformat() if signer.signed_at else None,
+                    'has_signed': signer.has_signed,
+                    'recipient_index': signer.recipient_index,
+                }
+            )
+
+        owner_email = None
+        owner_name = None
+        if isinstance(sc.signing_request_data, dict):
+            owner_email = sc.signing_request_data.get('owner_email')
+            owner_name = sc.signing_request_data.get('owner_name')
+
+        results.append(
+            {
+                'id': str(sc.id),
+                'provider': 'inhouse',
+                'contract_id': str(contract.id),
+                'contract_title': contract.title,
+                'status': sc.status,
+                'signing_order': sc.signing_order,
+                'sent_at': sc.sent_at.isoformat() if sc.sent_at else None,
+                'completed_at': sc.completed_at.isoformat() if sc.completed_at else None,
+                'expires_at': sc.expires_at.isoformat() if sc.expires_at else None,
+                'last_activity_at': sc.last_activity_at.isoformat() if sc.last_activity_at else None,
+                'created_at': sc.created_at.isoformat() if sc.created_at else None,
+                'updated_at': sc.updated_at.isoformat() if sc.updated_at else None,
+                'owner_email': owner_email,
+                'owner_name': owner_name,
+                'signers': signers,
+            }
+        )
+
+    return Response(
+        {
+            'success': True,
+            'count': total,
+            'results': results,
+            'limit': limit,
+            'offset': offset,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def inhouse_download_executed(request, contract_id: str):
     contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
     sc = get_object_or_404(InhouseSignatureContract, contract=contract)
@@ -966,9 +1141,21 @@ def inhouse_session(request, token: UUID):
 
 
 @xframe_options_exempt
-@api_view(['GET'])
+@api_view(['GET', 'OPTIONS'])
 @permission_classes([AllowAny])
 def inhouse_pdf(request, token: UUID):
+    origin = (request.META.get('HTTP_ORIGIN') or '').strip()
+    cors_origin = origin or '*'
+
+    if request.method == 'OPTIONS':
+        resp = Response(status=status.HTTP_200_OK)
+        resp['Access-Control-Allow-Origin'] = cors_origin
+        resp['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        # pdf.js uses Range requests, which trigger preflight.
+        resp['Access-Control-Allow-Headers'] = 'Range'
+        resp['Access-Control-Max-Age'] = '86400'
+        return resp
+
     signer = get_object_or_404(InhouseSigner, access_token=token)
     sc = signer.inhouse_signature_contract
 
@@ -992,6 +1179,10 @@ def inhouse_pdf(request, token: UUID):
     # Allow the signer frontend (often on a different origin in dev/prod)
     # to embed the PDF in an iframe.
     resp.xframe_options_exempt = True
+
+    # Allow cross-origin fetch (pdf.js) from the frontend.
+    resp['Access-Control-Allow-Origin'] = cors_origin
+    resp['Access-Control-Expose-Headers'] = 'Accept-Ranges, Content-Encoding, Content-Length, Content-Range'
     return resp
 
 

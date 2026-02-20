@@ -332,46 +332,66 @@ class EmailService:
             else ""
         )
 
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset=\"UTF-8\">
-            <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #111; }}
-                .container {{ max-width: 640px; margin: 0 auto; background-color: #f5f5f5; padding: 22px; border-radius: 10px; }}
-                .header {{ background: linear-gradient(135deg, #111827 0%, #4f46e5 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; }}
-                .header h1 {{ margin: 0; font-size: 20px; }}
-                .content {{ background-color: white; padding: 26px; border-radius: 0 0 10px 10px; }}
-                .card {{ background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin: 14px 0; }}
-                .btn {{ display: inline-block; padding: 12px 18px; background: #4f46e5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
-                .btn:hover {{ background: #4338ca; text-decoration: none; }}
-                .muted {{ color: #6b7280; font-size: 12px; }}
-            </style>
-        </head>
-        <body>
-            <div class=\"container\">
-                <div class=\"header\">
-                    <h1>Signature requested</h1>
-                </div>
-                <div class=\"content\">
-                    <p>Hi <strong>{recipient_name}</strong>,</p>
-                    <p>You’ve been invited to sign the following contract:</p>
-                    <div class=\"card\">
-                        <p style=\"margin: 6px 0;\"><strong>Contract:</strong> {contract_title}</p>
-                        {sender_line}
-                        {expires_line}
+        safe_contract_title = str(contract_title or '').strip() or 'Contract'
+
+        return f"""<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset=\"UTF-8\" />
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+        <title>Signature requested</title>
+    </head>
+    <body style=\"margin:0;padding:0;background:#f3f4f6;\">
+        <div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;\">Please review and sign: {safe_contract_title}</div>
+
+        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f4f6;padding:24px 12px;\">
+            <tr>
+                <td align=\"center\">
+                    <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;\">
+                        <tr>
+                            <td style=\"padding:18px 20px;background:linear-gradient(135deg,#0f172a 0%,#4f46e5 100%);color:#ffffff;\">
+                                <div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,Arial,sans-serif;\">
+                                    <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.9;\">Contract signature</div>
+                                    <div style=\"margin-top:6px;font-size:22px;font-weight:800;line-height:1.25;\">Signature requested</div>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td style=\"padding:22px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,Arial,sans-serif;color:#111827;\">
+                                <p style=\"margin:0 0 12px 0;font-size:14px;\">Hi <strong>{recipient_name}</strong>,</p>
+                                <p style=\"margin:0 0 14px 0;font-size:14px;color:#374151;\">You have been invited to review and sign the following contract:</p>
+
+                                <div style=\"border:1px solid #e5e7eb;background:#f9fafb;border-radius:14px;padding:14px 14px;\">
+                                    <div style=\"font-size:12px;color:#6b7280;\">Contract</div>
+                                    <div style=\"margin-top:4px;font-size:16px;font-weight:700;color:#111827;\">{safe_contract_title}</div>
+                                    <div style=\"margin-top:10px;font-size:13px;color:#4b5563;\">
+                                        {sender_line}
+                                        {expires_line}
+                                    </div>
+                                </div>
+
+                                <div style=\"margin:18px 0 12px 0;\">
+                                    <a href=\"{signing_url}\" style=\"display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700;font-size:14px;\">Review &amp; Sign</a>
+                                </div>
+
+                                <p style=\"margin:0 0 10px 0;font-size:12px;color:#6b7280;\">If the button doesn’t work, copy and paste this link into your browser:</p>
+                                <p style=\"margin:0 0 16px 0;font-size:12px;word-break:break-all;color:#111827;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;\">{signing_url}</p>
+
+                                <p style=\"margin:0;font-size:12px;color:#9ca3af;\">This is an automated message. If you weren’t expecting this request, you can ignore this email.</p>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style=\"max-width:640px;margin:10px auto 0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,Arial,sans-serif;font-size:11px;color:#9ca3af;\">
+                        Please do not reply to this email.
                     </div>
-                    <p style=\"margin: 18px 0;\">
-                        <a class=\"btn\" href=\"{signing_url}\">Review & Sign</a>
-                    </p>
-                    <p class=\"muted\">If the button doesn’t work, paste this URL into your browser: {signing_url}</p>
-                    <p class=\"muted\">This is an automated message. Please do not reply.</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>
+"""
 
     def _get_inhouse_completed_template(
         self,

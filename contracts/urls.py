@@ -66,16 +66,11 @@ urlpatterns = [
     path('document-download-url/', views.get_document_download_url, name='document-download-url'),
     path('<uuid:contract_id>/download-url/', views.get_contract_download_url, name='contract-download-url'),
     
-    # ========== SIGNNOW E-SIGNATURE ENDPOINTS ==========
-    path('contracts/upload/', views.upload_contract, name='upload_contract'),
-    path('esign/send/', views.send_for_signature, name='send_for_signature'),
-    path('esign/signing-url/<str:contract_id>/', views.get_signing_url, name='get_signing_url'),
-    path('esign/status/<str:contract_id>/', views.check_status, name='check_status'),
-    path('esign/executed/<str:contract_id>/', views.get_executed_document, name='get_executed_document'),
-
     # ========== INHOUSE E-SIGNATURE ENDPOINTS ==========
     path('inhouse/esign/start/', inhouse_esign_views.inhouse_start, name='inhouse_esign_start'),
+    path('inhouse/esign/requests/', inhouse_esign_views.inhouse_requests, name='inhouse_esign_requests'),
     path('inhouse/esign/status/<uuid:contract_id>/', inhouse_esign_views.inhouse_status, name='inhouse_esign_status'),
+    path('inhouse/esign/audit/<uuid:contract_id>/', inhouse_esign_views.inhouse_audit, name='inhouse_esign_audit'),
     path('inhouse/esign/executed/<uuid:contract_id>/', inhouse_esign_views.inhouse_download_executed, name='inhouse_esign_executed'),
     path('inhouse/esign/certificate/<uuid:contract_id>/', inhouse_esign_views.inhouse_download_certificate, name='inhouse_esign_certificate'),
     # signer-facing endpoints (no auth; token is the secret)
