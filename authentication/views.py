@@ -412,6 +412,17 @@ class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
     throttle_scope = 'auth'
 
+    def check_throttles(self, request):
+        """Fail-open throttling for Google auth.
+
+        Google sign-in should not hard-fail if cache/Redis is temporarily unavailable.
+        """
+        try:
+            return super().check_throttles(request)
+        except Exception as exc:
+            logger.warning("GoogleLoginView throttle backend unavailable; skipping throttle: %s", exc)
+            return
+
     @extend_schema(request=GoogleLoginRequestSerializer, responses={200: LoginResponseSerializer})
     def post(self, request):
         if google_id_token is None or google_requests is None:

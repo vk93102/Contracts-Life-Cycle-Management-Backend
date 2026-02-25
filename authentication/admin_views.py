@@ -25,6 +25,9 @@ from contracts.models import (
 )
 from approvals.models import ApprovalModel
 from audit_logs.models import AuditLogModel
+from ai.models import DraftGenerationTask
+from calendar_events.models import CalendarEvent
+from reviews.models import ReviewContract
 
 
 def _current_user_payload(user) -> dict:
@@ -282,6 +285,10 @@ class AdminAnalyticsView(APIView):
         firma_sent_by_month = month_bucket_map(firma_sc_qs, 'sent_at', trend_start)
         firma_completed_by_month = month_bucket_map(firma_sc_qs, 'completed_at', trend_start)
 
+        # AI usage trends (monthly) - based on first-class models
+        ai_reviews_by_month = month_bucket_map(ReviewContract.objects.filter(tenant_id=tenant_id), 'created_at', trend_start)
+        ai_generations_by_month = month_bucket_map(DraftGenerationTask.objects.filter(tenant_id=tenant_id), 'created_at', trend_start)
+
         trends = []
         for d in month_starts:
             key = d.date().isoformat()
@@ -292,6 +299,21 @@ class AdminAnalyticsView(APIView):
                 'templates_created': templates_by_month.get(key, 0),
                 'firma_sent': firma_sent_by_month.get(key, 0),
                 'firma_completed': firma_completed_by_month.get(key, 0),
+            })
+
+        ai_reviews_trend_6m = []
+        ai_generations_trend_6m = []
+        for d in month_starts:
+            key = d.date().isoformat()
+            ai_reviews_trend_6m.append({
+                'month_start': d.date().isoformat(),
+                'label': d.strftime('%b %Y'),
+                'count': ai_reviews_by_month.get(key, 0),
+            })
+            ai_generations_trend_6m.append({
+                'month_start': d.date().isoformat(),
+                'label': d.strftime('%b %Y'),
+                'count': ai_generations_by_month.get(key, 0),
             })
 
         # 12-month trends for "Year" filter
@@ -395,6 +417,13 @@ class AdminAnalyticsView(APIView):
                 'created_last_7d': templates_qs.filter(created_at__gte=last_7d).count(),
                 'created_last_30d': templates_qs.filter(created_at__gte=last_30d).count(),
                 'top_templates': top_templates,
+            },
+            'ai': {
+                'reviews_total': ReviewContract.objects.filter(tenant_id=tenant_id).count(),
+                'generations_total': DraftGenerationTask.objects.filter(tenant_id=tenant_id).count(),
+                'events_total': CalendarEvent.objects.filter(tenant_id=tenant_id).count(),
+                'reviews_last_6_months': ai_reviews_trend_6m,
+                'generations_last_6_months': ai_generations_trend_6m,
             },
             'clauses': {
                 'total': clauses_qs.count(),

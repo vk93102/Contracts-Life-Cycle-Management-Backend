@@ -356,10 +356,12 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_SCHEMA_CLASS': 'clm_backend.schema.FeatureAutoSchema',
-    'DEFAULT_THROTTLE_CLASSES': [
+    'DEFAULT_THROTTLE_CLASSES': [] if (
+        DEBUG and os.getenv('DISABLE_THROTTLING_IN_DEBUG', 'True').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+    ) else [
         'clm_backend.throttling.TenantUserRateThrottle',
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.ScopedRateThrottle',
+        'clm_backend.throttling.SafeAnonRateThrottle',
+        'clm_backend.throttling.SafeScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         # Applies to AnonRateThrottle
@@ -535,7 +537,10 @@ if _csrf_trusted:
 DB_SLOW_QUERY_MS = int(os.getenv('DB_SLOW_QUERY_MS', '0') or '0')
 
 REDIS_URL = (os.getenv('REDIS_URL', '') or os.getenv('CACHE_REDIS_URL', '')).strip()
-if REDIS_URL:
+# Prefer in-memory cache during local DEBUG runs unless explicitly overridden.
+CACHE_BACKEND = (os.getenv('CACHE_BACKEND', 'locmem' if DEBUG else 'redis') or '').strip().lower()
+
+if CACHE_BACKEND == 'redis' and REDIS_URL:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.redis.RedisCache',
