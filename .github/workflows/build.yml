@@ -21,12 +21,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
+      - name: Convert repository name to lowercase
+        id: lowercase
+        run: echo "repo=${{ github.repository }}" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+      
       - name: Generate image tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/${{ github.repository }}
+            ghcr.io/${{ steps.lowercase.outputs.repo }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -48,8 +52,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.repo }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.repo }}:buildcache,mode=max
       
       - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+        run: echo ${{ steps.meta.outputs.digest }}
+

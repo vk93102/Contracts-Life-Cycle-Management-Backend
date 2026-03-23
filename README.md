@@ -19,10 +19,10 @@
 
 | Service | URL | Status |
 |---------|-----|--------|
-| **API (Production)** | `https://api.YOUR_DOMAIN.com` | [![API](https://img.shields.io/badge/API-live-brightgreen)](https://api.YOUR_DOMAIN.com/api/docs/) |
-| **Swagger UI** | `https://api.YOUR_DOMAIN.com/api/docs/` | [![Docs](https://img.shields.io/badge/docs-swagger-85EA2D)](https://api.YOUR_DOMAIN.com/api/docs/) |
-| **Prometheus Metrics** | `https://api.YOUR_DOMAIN.com/metrics` | [![Metrics](https://img.shields.io/badge/metrics-prometheus-E6522C)](https://api.YOUR_DOMAIN.com/metrics) |
-| **Frontend App** | `https://verdant-douhua-1148be.netlify.app` | [![Frontend](https://img.shields.io/badge/frontend-netlify-00C7B7)](https://verdant-douhua-1148be.netlify.app) |
+| **API (Production)** | [https://lawflow-267708864896.asia-south1.run.app](https://lawflow-267708864896.asia-south1.run.app) | [![API](https://img.shields.io/badge/API-live-brightgreen)](https://lawflow-267708864896.asia-south1.run.app/api/docs/) |
+| **Swagger UI** | [https://lawflow-267708864896.asia-south1.run.app/api/docs/](https://lawflow-267708864896.asia-south1.run.app/api/docs/) | [![Docs](https://img.shields.io/badge/docs-swagger-85EA2D)](https://lawflow-267708864896.asia-south1.run.app/api/docs/) |
+| **Prometheus Metrics** | [https://lawflow-267708864896.asia-south1.run.app/metrics](https://lawflow-267708864896.asia-south1.run.app/metrics) | [![Metrics](https://img.shields.io/badge/metrics-prometheus-E6522C)](https://lawflow-267708864896.asia-south1.run.app/metrics) |
+| **Frontend App** | [https://verdant-douhua-1148be.netlify.app](https://verdant-douhua-1148be.netlify.app) | [![Frontend](https://img.shields.io/badge/frontend-netlify-00C7B7)](https://verdant-douhua-1148be.netlify.app) |
 
 ### 📦 Repositories
 
