@@ -11,6 +11,17 @@
 
 **Enterprise-grade Contract Lifecycle Management backend** built with Django, DRF, AI integrations, and real-time processing capabilities.
 
+---
+
+### 🎬 [Watch Demo Video](https://www.loom.com/share/694dee3f381545b2a17f2dc1831c5bd0)
+
+### 📦 Repository Links
+
+| Repo | Link | Status |
+|------|------|--------|
+| **Backend (You are here)** | [Contracts-Life-Cycle-Management-Backend](https://github.com/vk93102/Contracts-Life-Cycle-Management-Backend) | ✅ |
+| **Frontend** | [Contracts-Life-Cycle-Management-Frontend](https://github.com/vk93102/Contracts-Life-Cycle-Management-Frontend) | ✅ |
+
 </div>
 
 ---
@@ -586,6 +597,348 @@ GET    /admin/                       # Django admin
 
 ---
 
+## 📖 Swagger/OpenAPI Documentation
+
+### Access Points
+
+1. **Swagger UI** (Interactive): `http://localhost:8000/api/docs/`
+   - Browse all endpoints
+   - Test API requests live
+   - View request/response examples
+   - Copy `curl` commands
+
+2. **ReDoc Documentation**: `http://localhost:8000/api/redoc/`
+   - Alternative API documentation interface
+   - Better for reading complex schemas
+
+3. **OpenAPI Schema (JSON)**: `http://localhost:8000/api/schema/`
+   - Raw OpenAPI 3.0 schema
+   - Import into Postman, Insomnia, or other tools
+
+### Tools Used
+
+- **drf-spectacular** (`pip install drf-spectacular`)
+  - Auto-generates OpenAPI 3.0 schema from DRF views
+  - Zero configuration needed; introspects serializers + permissions
+- **Swagger UI** & **ReDoc** bundled with drf-spectacular
+
+### Auto-Documentation Features
+
+**All endpoints are automatically documented**:
+- Request/response schemas pulled from serializers
+- HTTP status codes (200, 400, 401, 403, 404, 500)
+- Query parameters, path parameters, request/response body
+- Authentication requirements (Bearer token)
+- Pagination + filtering info
+- Error responses with examples
+
+**Example endpoint documentation**:
+```
+GET /api/v1/contracts/
+├─ Description: List all contracts (tenant-scoped)
+├─ Auth: Bearer token required
+├─ Query params:
+│  ├─ status: "draft" | "submitted" | "approved" | "signed"
+│  ├─ ordering: "-created_at" | "name"
+│  └─ page_size: integer (default: 20)
+├─ Response 200:
+│  {
+│    "count": 150,
+│    "next": "http://api/v1/contracts/?page=2",
+│    "results": [
+│      {
+│        "id": "uuid",
+│        "name": "Service Agreement 2026",
+│        "status": "approved",
+│        "created_at": "2026-03-20T10:30:00Z",
+│        "current_version": 3,
+│        "approvers": ["approver@example.com"],
+│        ...
+│      }
+│    ]
+│  }
+└─ Response 401: Missing/invalid token
+```
+
+### Local Development - Generate Schema
+
+```bash
+# Auto-generates OpenAPI schema from code
+python manage.py spectacular --file schema.yml
+
+# Or REST framework's built-in (less powerful)
+python manage.py generateschema --format openapi > schema.json
+```
+
+### CI/CD Integration
+
+**In GitHub Actions**, validate OpenAPI schema:
+```yaml
+- name: Generate & validate OpenAPI schema
+  run: |
+    python manage.py spectacular --validate
+    # Schema is auto-validated during startup
+```
+
+### Import to Postman / Insomnia
+
+1. Open Postman → Import
+2. Paste: `http://your-backend/api/schema/`
+3. All endpoints + auth headers auto-imported
+4. Collections organized by app name (contracts, ai, approvals, etc.)
+
+---
+
+## 🔒 Security Layers (Multi-Defense Strategy)
+
+### Layer 1: Transport Security (HTTPS + Headers)
+
+**Production Config** (`SECURITY_STRICT=True`):
+
+```python
+# settings.py
+SECURE_SSL_REDIRECT = True              # Force HTTPS
+SESSION_COOKIE_SECURE = True            # Cookies sent only over HTTPS
+CSRF_COOKIE_SECURE = True              # CSRF tokens sent only over HTTPS
+
+# Security headers
+SECURE_HSTS_SECONDS = 31536000         # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True             # Include in HSTS preload list
+
+SECURE_CONTENT_SECURITY_POLICY = {     # Mitigate XSS
+    "default-src": ("'self'",),
+    "script-src": ("'self'", "'unsafe-inline'"),  # Adjust as needed
+}
+
+X_FRAME_OPTIONS = "DENY"               # Prevent clickjacking
+SECURE_BROWSER_XSS_FILTER = True       # Enable XSS filter in older browsers
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+```
+
+**HTTP Response Headers** (auto-added):
+```
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Content-Security-Policy: default-src 'self'
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+### Layer 2: Authentication (Stateless JWT)
+
+**JWT Token Structure**:
+```json
+Header: {
+  "alg": "HS256",
+  "typ": "JWT"
+}
+
+Payload: {
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@example.com",
+  "tenant_id": "550e8400-e29b-41d4-a716-446655440001",
+  "is_admin": false,
+  "is_superadmin": false,
+  "roles": ["approver"],
+  "exp": 1711449000,
+  "iat": 1711448400,
+  "jti": "550e8400-e29b-41d4-a716-446655440002"
+}
+
+Signature: HMAC-SHA256(base64(header) + "." + base64(payload), SECRET_KEY)
+```
+
+**JWT Protection**:
+```python
+# settings.py
+JWT_AUTH = {
+    'JWT_SECRET_KEY': os.getenv('DJANGO_SECRET_KEY'),
+    'JWT_ALGORITHM': 'HS256',
+    'JWT_EXPIRATION_DELTA': timedelta(minutes=15),
+    'JWT_ALLOW_REFRESH': True,
+    'JWT_REFRESH_EXPIRATION_DELTA': timedelta(days=7),
+    'JWT_VERIFY_EXPIRATION': True,
+    'JWT_AUTH_HEADER_TYPES': ('Bearer',),
+}
+```
+
+### Layer 3: Authorization (Role-Based Access Control)
+
+**Permission Classes**:
+```python
+class IsAuthenticated(permissions.BasePermission):
+    """User must have valid JWT token"""
+
+class IsAdminUser(permissions.BasePermission):
+    """User must be admin of their tenant"""
+    
+class IsSuperAdminUser(permissions.BasePermission):
+    """User must be superadmin (all tenants)"""
+
+class HasRole(permissions.BasePermission):
+    """User must have specific role (approver, editor, viewer)"""
+    
+class IsTenantMember(permissions.BasePermission):
+    """User can only access objects in their tenant"""
+```
+
+**Applied in Views**:
+```python
+class ContractListView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsTenantMember]
+    
+    def get_queryset(self):
+        return Contract.objects.filter(tenant_id=self.request.user.tenant_id)
+
+class ContractApprovalView(CreateAPIView):
+    permission_classes = [IsAuthenticated, HasRole('approver')]
+```
+
+### Layer 4: Rate Limiting & Throttling
+
+**Prevent Brute-Force / DoS**:
+
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'clm_backend.throttling.TenantAwareScopedThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'auth.login': '5/minute',
+        'auth.otp': '10/minute',
+        'default': '1000/hour',
+        'contracts': '500/hour',
+    }
+}
+```
+
+**Rate Limit Headers**:
+```
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 998
+X-RateLimit-Reset: 1711452000
+Retry-After: 3600
+```
+
+### Layer 5: CSRF Protection
+
+**For State-Changing Operations**:
+
+```python
+POST /api/v1/contracts/
+
+Headers:
+  Authorization: Bearer {jwt_token}
+  X-CSRFToken: {csrf_token}
+  Content-Type: application/json
+```
+
+### Layer 6: Tenant Isolation (Row-Level Security)
+
+**Every model includes** `tenant_id` + index:
+
+```python
+class Contract(models.Model):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant_id', 'created_at']),
+        ]
+```
+
+**Middleware enforces filtering**:
+```python
+def get_queryset(self):
+    return self.model.objects.filter(tenant_id=self.request.user.tenant_id)
+```
+
+### Layer 7: Input Validation & SQL Injection Prevention
+
+**Django ORM prevents SQL injection**:
+```python
+# ✅ Safe (parameterized queries)
+Contract.objects.filter(name=name)
+```
+
+**DRF Serializer Validation**:
+```python
+class ContractSerializer(serializers.ModelSerializer):
+    def validate_name(self, value):
+        if len(value) < 3:
+            raise serializers.ValidationError("Name too short")
+        return value
+```
+
+### Layer 8: PII Protection & Audit Logging
+
+**Sensitive fields excluded from logs**:
+```python
+class MaskPII(logging.Filter):
+    def filter(self, record):
+        record.msg = re.sub(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+                           '***@***.com', record.msg)
+        return True
+```
+
+**Immutable Audit Trail**:
+```python
+class AuditLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=50)
+    resource_type = models.CharField(max_length=50)
+    resource_id = models.UUIDField()
+    old_values = models.JSONField()
+    new_values = models.JSONField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField()
+```
+
+### Layer 9: Dependency Security
+
+**Automated scanning**:
+```bash
+pip install safety bandit
+safety check requirements.txt
+bandit -r . -ll
+```
+
+### Layer 10: Environment-Based Controls
+
+**Local Development** (permissive):
+```
+DEBUG=True
+SECURITY_STRICT=False
+```
+
+**Production** (strict):
+```
+DEBUG=False
+SECURITY_STRICT=True
+SECURE_SSL_REDIRECT=True
+SECURE_HSTS_SECONDS=31536000
+```
+
+### 🛡️ Security Checklist
+
+- ✅ All HTTP traffic → HTTPS redirect
+- ✅ JWT tokens cannot be forged (HMAC-SHA256)
+- ✅ Tokens expire in 15 minutes (refresh 7 days)
+- ✅ Every endpoint requires authentication
+- ✅ Role-based access control enforced
+- ✅ Tenant isolation at row + SQL level
+- ✅ Rate limiting prevents brute-force
+- ✅ Input validation prevents injection
+- ✅ PII protected in logs
+- ✅ Audit trail immutable
+- ✅ Dependencies scanned weekly
+- ✅ Security headers prevent XSS/clickjacking
+- ✅ CSRF tokens required for state-changes
+
+---
+
 ## 🔐 Authentication Flows (Detailed)
 
 ### JWT Token Flow
@@ -1093,6 +1446,14 @@ Proprietary - Contract Lifecycle Management System
 |---|---|---|---|
 | [**Backend** (this repo)](https://github.com/vk93102/Contracts-Life-Cycle-Management-Backend) | REST API, AI integration, database | Python/Django | ✅ Production |
 | [**Frontend**](https://github.com/vk93102/Contracts-Life-Cycle-Management-Frontend) | UI, contract management, workflows | React/Next.js | ✅ Production |
+
+---
+
+### 🎬 Resources
+
+- **[📹 Live Demo Video](https://www.loom.com/share/694dee3f381545b2a17f2dc1831c5bd0)** - See the system in action
+- **[🔧 Backend Setup](https://github.com/vk93102/Contracts-Life-Cycle-Management-Backend)** - Django REST API
+- **[🎨 Frontend Setup](https://github.com/vk93102/Contracts-Life-Cycle-Management-Frontend)** - React/Next.js UI
 
 ---
 
