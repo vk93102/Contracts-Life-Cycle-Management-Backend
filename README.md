@@ -15,7 +15,7 @@
 
 ---
 
-### 🚀 Live Deployments
+### Live Deployments
 
 | Service | URL | Status |
 |---------|-----|--------|
