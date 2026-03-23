@@ -19,6 +19,8 @@
 
 A production-ready Django REST Framework backend for contract management featuring:
 - 🔐 **JWT-based authentication** with stateless token validation
+- 🎯 **Role-based access control** (admin, approver, editor, viewer)
+- 📋 **Contract version control** with immutable snapshots
 - 🤖 **AI-powered features** (Gemini + VoyageAI for NLP/embeddings)
 - ⚡ **Async task processing** with Celery
 - 📊 **OpenTelemetry observability** + Prometheus metrics
@@ -26,6 +28,10 @@ A production-ready Django REST Framework backend for contract management featuri
 - 📝 **Multi-tenant architecture** with row-level isolation
 - ☁️ **Cloud storage** (Cloudflare R2)
 - 📄 **Auto-generated API docs** (Swagger/OpenAPI)
+- 📢 **Notifications** (email, in-app, webhooks)
+- 📋 **Audit logging** with immutable trail
+
+Companion frontend: [Contracts-Life-Cycle-Management-Frontend](https://github.com/vk93102/Contracts-Life-Cycle-Management-Frontend)
 
 ---
 
@@ -580,7 +586,317 @@ GET    /admin/                       # Django admin
 
 ---
 
-## 🚀 Production Deployment
+## 🔐 Authentication Flows (Detailed)
+
+### JWT Token Flow
+
+```
+1. User POSTs credentials to /api/v1/auth/login/
+   Request: { "email": "user@example.com", "password": "..." }
+
+2. Backend validates + generates JWT tokens:
+   ✅ Short-lived access token (15m)
+   ✅ Long-lived refresh token (7d)
+   Response: { "access": "eyJ...", "refresh": "eyJ...", "user": {...} }
+
+3. Client stores tokens (memory for access, secure cookie for refresh)
+
+4. Every API request includes:
+   Authorization: Bearer {access_token}
+
+5. Backend decodes JWT claims:
+   {
+     "user_id": "abc123",
+     "email": "user@example.com",
+     "tenant_id": "tenant456",
+     "is_admin": false,
+     "is_superadmin": false,
+     "roles": ["approver", "viewer"]
+   }
+
+6. Middleware injects user context; every view accesses request.user
+
+7. Token expires → client POSTs refresh token to /api/v1/auth/refresh/
+   Request: { "refresh": "eyJ..." }
+   Response: { "access": "eyJ..." } (new short-lived token)
+```
+
+### OTP Verification Flow (High-Security Operations)
+
+```
+1. User POSTs email to /api/v1/auth/request-otp/
+   Request: { "email": "user@example.com" }
+
+2. Backend generates OTP + sends via email
+   Sent to: user@example.com
+   OTP valid for: 10 minutes
+
+3. User receives email, copies OTP
+
+4. User POSTs OTP to /api/v1/auth/verify-otp/
+   Request: { "email": "user@example.com", "otp": "123456", "purpose": "contract_signing" }
+
+5. Backend validates OTP + generates OTP token (short-lived, single-use)
+   Response: { "otp_token": "eyJ...", "expires_in": 600 }
+
+6. Client uses OTP token for sensitive operations (e.g., contract signing)
+   Authorization: Bearer {otp_token}
+```
+
+### Google OAuth Flow (Optional)
+
+```
+1. Frontend redirects to /api/v1/auth/google/
+
+2. User signs in with Google
+
+3. Google redirects back with auth code
+
+4. Backend exchanges code for Google ID token
+
+5. Backend either creates or updates user account
+
+6. Backend returns JWT tokens (same as login flow)
+   Response: { "access": "eyJ...", "refresh": "eyJ..." }
+```
+
+### Role-Based Access Control (RBAC)
+
+**Roles hierarchy**:
+- `superadmin` — system administrator (all tenants)
+- `admin` — tenant administrator
+- `approver` — can approve contracts
+- `editor` — can edit contracts
+- `viewer` — read-only access
+
+**Applied via middleware + permission classes**:
+
+```python
+# In views.py
+class ContractDetailView(RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated, IsAdminOrEditor]
+    # Only users with admin/editor role can edit
+    
+class ContractApprovalView(CreateAPIView):
+    permission_classes = [IsAuthenticated, HasRole('approver')]
+    # Only approvers can approve
+```
+
+**Token validation happens at middleware level** → claim validation is zero-cost → all downstream requests assume valid context.
+
+---
+
+## � DevOps & Lifecycle Practices
+
+### Versioning Strategy
+
+- **Semantic Versioning** for releases: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
+- **Tags** in Git: `v1.2.3` for release commits
+- **Database migrations** are versioned per deployment (Django migrations)
+- **API versioning**: path-based (`/api/v1/`, `/api/v2/`) for breaking changes
+- **Contract schema versioning**: immutable snapshots stored per `contract_version`
+
+### CI/CD Pipeline
+
+**GitHub Actions workflows** (recommended setup):
+
+```yaml
+# On PR:
+- Lint (flake8, black)
+- Type check (mypy)
+- Run full test suite
+- Coverage reports
+- Security scan (bandit)
+
+# On merge to main:
+- Build Docker image
+- Push to registry
+- Deploy to staging
+- Run smoke tests
+- Deploy to production (manual approval)
+```
+
+**Tools**:
+- **Code quality**: flake8, black, isort
+- **Type safety**: mypy
+- **Security**: bandit, safety (deps)
+- **Testing**: pytest, coverage
+- **Container**: Docker + Docker Compose
+
+### Branching Workflow
+
+```
+main (production)
+  └── staging (pre-prod)
+      └── feature/* (dev branches)
+```
+
+**Rules**:
+- PRs require code review + passing tests
+- `main` is always deployable
+- `staging` mirrors production environment
+- Feature branches: `feature/contract-versioning`, `fix/auth-token-bug`
+- Commits: descriptive messages (`feat: add clause classification`, `fix: race condition in approvals`)
+
+### Environment Management
+
+| Environment | Purpose | Auto-deploy | Details |
+|---|---|---|---|
+| **local** | Developer machine | N/A | `DEBUG=True`, in-memory cache, SQLite optional |
+| **dev** | Shared dev server | On push to `dev` branch | Real Postgres, Redis, Celery workers |
+| **staging** | Pre-production mirror | On PR merge to `staging` | Same config as prod, full data sanitization |
+| **production** | Live system | Manual + approval gates | Monitoring, backups, strict security |
+
+### Release Process
+
+1. **Bump version** in `__init__.py` or `setup.py`
+2. **Run full test suite** locally + in CI
+3. **Create release branch**: `release/v1.2.3`
+4. **Generate changelog** with commit history
+5. **Tag commit**: `git tag v1.2.3`
+6. **Deploy to staging** for final smoke tests
+7. **Deploy to production** with canary or blue-green strategy
+8. **Monitor logs** + metrics for 24 hours
+9. **Post-mortem** if issues; rollback if needed
+
+---
+
+## ✅ Production Readiness Checklist
+
+### Code Quality & Architecture
+
+- ✅ **Modular design**: apps are loosely coupled, each with clear responsibilities
+  - `authentication/`: JWT + OTP
+  - `contracts/`: core CLM entity management
+  - `ai/`: AI service integrations
+  - `approvals/`: workflow engine
+  - `audit_logs/`: immutable audit trail
+- ✅ **Layered architecture**: models → serializers → views → URLs
+  - Business logic in services (`approval_engine.py`, `ai_service.py`)
+  - View layer thin (delegation to services)
+- ✅ **Dependency injection**: explicit parameter passing, not hidden globals
+- ✅ **No tight coupling**: swappable backends (e.g., AI providers, cache)
+
+### Testing & Code Coverage
+
+- ✅ **Unit tests** for all business logic
+  - `tests/test_approvals.py`, `tests/test_contracts.py`
+  - Target: >80% coverage on critical paths
+- ✅ **Integration tests** for API endpoints
+  - Database transactions tested end-to-end
+  - Auth flows verified with real tokens
+- ✅ **Production tests** in `tests/README_PRODUCTION_TESTS.md`
+  - Smoke tests run post-deploy
+  - Synthetic transaction monitoring
+- ✅ **Test fixtures** for common data scenarios
+- ✅ **Continuous coverage monitoring** via CI
+
+### Validation & Input Handling
+
+- ✅ **Strong validation** at all entry points
+  - Serializers (`serializers.py` in each app)
+  - Custom validators for business rules
+  - JSON schema validation for flexible fields
+- ✅ **Error normalization**: all endpoints return consistent error shape
+  - `{"error": "...", "detail": "...", "status_code": ...}`
+- ✅ **Rate limiting** per user + tenant to prevent abuse
+- ✅ **SQL injection prevention**: parameterized queries (ORM enforced)
+
+### Security
+
+- ✅ **Authentication**: JWT tokens with short expiry (15m) + refresh tokens (7d)
+- ✅ **Authorization**: role-based permissions on every endpoint
+- ✅ **Tenant isolation**: row-level filtering, impossible to leak cross-tenant data
+- ✅ **PII protection**: sensitive fields logged only if necessary; audit trail tracks access
+- ✅ **HTTPS only** in production
+- ✅ **CSRF tokens** for state-changing requests
+- ✅ **Security headers**: CSP, X-Frame-Options, HSTS
+- ✅ **Dependency scanning**: regular updates, security patches
+
+### Observability
+
+- ✅ **Structured logging** with request context
+  - Request ID propagation
+  - Tenant context in all logs
+- ✅ **Metrics** exported to Prometheus
+  - Request latency, error rates, queue depth
+- ✅ **Distributed tracing** via OpenTelemetry
+- ✅ **Alerting** configured for critical errors
+- ✅ **Error tracking** (optional Sentry integration)
+
+### Database & State Management
+
+- ✅ **Migrations tracked** in version control
+- ✅ **Backup strategy** documented (automated daily snapshots)
+- ✅ **Data retention policies** enforced
+- ✅ **Connection pooling** tuned for scale
+- ✅ **Recovery time objective (RTO)** documented
+
+### API Design & Documentation
+
+- ✅ **OpenAPI schema** auto-generated (`/api/schema/`)
+- ✅ **Swagger UI** at `/api/docs/`
+- ✅ **Comprehensive API documentation**: `docs/BACKEND_API_DOCUMENTATION.md`
+- ✅ **Error codes** documented (e.g., `INVALID_CONTRACT_STATE`, `APPROVAL_TIMEOUT`)
+- ✅ **Rate limit headers** included in responses
+
+---
+
+## 🧪 Testing Strategy
+
+### Test Hierarchy
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│  E2E Tests (slow, few)                                                              │  Rare, only critical flows
+│  └─ Full workflow tests                                                             │  (e.g., contract submission → approval)
+├────────────────────────────────────────────────────────────────────────────────────┤
+│  Integration Tests (medium, some)                                                   │  API endpoints + service layer
+│  └─ API + Database + External services                                              │  Celery task execution
+├────────────────────────────────────────────────────────────────────────────────────┤
+│  Unit Tests (fast, many)                                                            │  Business logic, validators
+│  └─ Functions, classes in isolation                                                 │  Serializers, services
+└────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Running Tests Locally
+
+```bash
+# All tests (unit + integration)
+python manage.py test
+
+# Specific app
+python manage.py test contracts
+
+# With coverage
+python -m pytest --cov=contracts --cov-report=html
+
+# Integration tests only
+python manage.py test tests/integration/
+
+# Production smoke tests
+python manage.py test tests/README_PRODUCTION_TESTS.md
+```
+
+### Test Files
+
+- `contracts/tests.py` — Contract CRUD, versioning, state transitions
+- `ai/test_advanced_features.py` — Metadata extraction, summarization
+- `audit_logs/test_audit_logging.py` — Audit trail immutability
+- `approvals/tests.py` — Workflow logic, approval chains
+- `authentication/tests.py` — JWT flow, OTP, role validation
+- `tests/production_tests.py` — Smoke tests, synthetic transactions
+
+### Mocking Strategy
+
+- **External AI APIs** (Gemini, VoyageAI): mock via `unittest.mock`
+- **Email/notifications**: capture in test mailbox
+- **Celery tasks**: run synchronously in tests (`CELERY_ALWAYS_EAGER=True`)
+- **R2 storage**: use local filesystem stub for tests
+
+---
+
+## �🚀 Production Deployment
 
 ### Environment Variables (Production)
 
@@ -625,12 +941,124 @@ R2_ACCESS_KEY_ID=...
 
 ---
 
-## 📚 Additional Documentation
+## 📚 Documentation & Resources
 
-- **Backend API Documentation**: `docs/BACKEND_API_DOCUMENTATION.md`
-- **Admin Features**: `docs/admin.md`
-- **Production Tests**: `tests/README_PRODUCTION_TESTS.md`
-- **Feature Index**: `docs/FEATURES_INDEX.md`
+### Backend Documentation
+
+- **Full API Reference**: [BACKEND_API_DOCUMENTATION.md](docs/BACKEND_API_DOCUMENTATION.md)
+  - All endpoints, request/response schemas, examples
+- **Feature Index**: [FEATURES_INDEX.md](docs/FEATURES_INDEX.md)
+  - Complete list of implemented features + status
+- **Admin Guide**: [admin.md](docs/admin.md)
+  - Admin-only endpoints, user management, tenant setup
+- **AI Features**: [ai.md](docs/ai.md)
+  - Metadata extraction, summarization, classification
+- **Authentication**: [authentication.md](docs/authentication.md)
+  - JWT flows, OTP, OAuth, role-based access
+- **Workflows & Approvals**: [workflows.md](docs/workflows.md)
+  - Approval chains, state transitions, notifications
+- **Audit Logging**: [audit_logs](docs/)
+  - Immutability, retention, compliance
+- **Production Tests**: [README_PRODUCTION_TESTS.md](tests/README_PRODUCTION_TESTS.md)
+  - Smoke tests, synthetic monitoring
+
+### Frontend Repository
+
+**Companion Frontend (React/Next.js)**:
+- 📱 GitHub: [vk93102/Contracts-Life-Cycle-Management-Frontend](https://github.com/vk93102/Contracts-Life-Cycle-Management-Frontend)
+- Features: Contract upload/viewing, approval workflows, AI insights, audit logs
+- Integrates with this backend via REST API + JWT
+
+### Environment Setup Guide
+
+**Local Development**:
+```bash
+# Clone repo
+git clone https://github.com/yourusername/Contracts-Life-Cycle-Management-Backend.git
+cd Contracts-Life-Cycle-Management-Backend
+
+# Create virtual environment
+python3.11 -m venv venv
+source venv/bin/activate  # macOS/Linux
+# or
+venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set up local environment
+cp .env.example .env
+# Edit .env with local values (Redis optional for local dev)
+
+# Run migrations
+python manage.py migrate
+
+# Create superuser
+python manage.py createsuperuser
+
+# Start development server
+python manage.py runserver
+
+# In separate terminal, start Celery worker (optional for background tasks)
+celery -A clm_backend worker --loglevel=info
+```
+
+**Docker Setup**:
+```bash
+docker-compose up -d
+docker-compose exec web python manage.py migrate
+docker-compose exec web python manage.py createsuperuser
+# Access at http://localhost:8000
+```
+
+### Deployment Instructions
+
+**Prerequisites**:
+- [ ] Supabase or PostgreSQL instance with pgvector + pg_trgm extensions
+- [ ] Redis instance (for caching + Celery)
+- [ ] Cloudflare R2 account (for document storage)
+- [ ] Gemini API key (for AI features)
+- [ ] VoyageAI API key (for embeddings)
+- [ ] SMTP server (for email notifications)
+
+**Deploy to Heroku (example)**:
+```bash
+# Create Heroku app
+heroku create your-clm-app
+
+# Set environment variables
+heroku config:set DEBUG=False
+heroku config:set DJANGO_SECRET_KEY=<generated-key>
+heroku config:set DATABASE_URL=<supabase-url>
+# ... set all required env vars
+
+# Push to Heroku
+git push heroku main
+
+# Run migrations
+heroku run python manage.py migrate
+
+# Collect static files
+heroku run python manage.py collectstatic
+
+# Scale workers
+heroku ps:scale web=2 worker=1
+```
+
+**Deploy to AWS EC2/ECS**:
+1. Build Docker image: `docker build -t clm-backend .`
+2. Push to ECR: `aws ecr get-login-password | docker login ...`
+3. Deploy via CloudFormation or ECS console
+4. Set environment variables in task definition
+5. Use RDS for PostgreSQL + ElastiCache for Redis
+6. Enable CloudWatch monitoring
+
+**Post-deployment**:
+- [ ] Run smoke tests: `python manage.py test tests/production_tests.py`
+- [ ] Verify `/api/docs/` is accessible
+- [ ] Check `/metrics` for Prometheus
+- [ ] Test JWT auth flow with real credentials
+- [ ] Monitor logs for 24 hours
 
 
 ---
@@ -653,8 +1081,21 @@ Proprietary - Contract Lifecycle Management System
 
 <div align="center">
 
+**Enterprise Contract Lifecycle Management Backend**
+
 **Built with ❤️ using Django & Django REST Framework**
 
-[Backend API Docs](docs/) • [Frontend Repo](../CLM_Frontend/) • [Production Tests](tests/README_PRODUCTION_TESTS.md)
+---
+
+### 📦 Related Repositories
+
+| Repository | Purpose | Language | Status |
+|---|---|---|---|
+| [**Backend** (this repo)](https://github.com/vk93102/Contracts-Life-Cycle-Management-Backend) | REST API, AI integration, database | Python/Django | ✅ Production |
+| [**Frontend**](https://github.com/vk93102/Contracts-Life-Cycle-Management-Frontend) | UI, contract management, workflows | React/Next.js | ✅ Production |
+
+---
+
+**Quick Links**: [API Docs](docs/) • [Feature Index](docs/FEATURES_INDEX.md) • [Deployment Guide](#deployment-instructions) • [Contributing](#-contributing) • [License](#-license)
 
 </div>
