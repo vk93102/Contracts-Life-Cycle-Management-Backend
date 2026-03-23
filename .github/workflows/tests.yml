@@ -80,6 +80,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db
           DJANGO_SECRET_KEY: test-secret-key-not-for-production
           DEBUG: 'False'
+          SUPABASE_ONLY: 'False'
         run: python manage.py migrate
       
       - name: Run tests with coverage
@@ -91,6 +92,7 @@ jobs:
           CELERY_RESULT_BACKEND: redis://localhost:6379/2
           DJANGO_SECRET_KEY: test-secret-key-not-for-production
           DEBUG: 'False'
+          SUPABASE_ONLY: 'False'
           CELERY_ALWAYS_EAGER: 'True'
         run: |
           pytest --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml || true
@@ -111,6 +113,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db
           DJANGO_SECRET_KEY: test-secret-key-not-for-production
           DEBUG: 'False'
+          SUPABASE_ONLY: 'False'
         run: python manage.py spectacular --validate
       
       - name: Publish test results
