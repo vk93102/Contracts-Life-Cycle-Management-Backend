@@ -77,7 +77,7 @@ jobs:
       
       - name: Run migrations
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db?sslmode=disable
           DJANGO_SECRET_KEY: test-secret-key-not-for-production
           DEBUG: 'False'
           SUPABASE_ONLY: 'False'
@@ -86,7 +86,7 @@ jobs:
       - name: Run tests with coverage
         continue-on-error: true
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db?sslmode=disable
           REDIS_URL: redis://localhost:6379/0
           CELERY_BROKER_URL: redis://localhost:6379/1
           CELERY_RESULT_BACKEND: redis://localhost:6379/2
@@ -110,7 +110,7 @@ jobs:
       - name: Generate OpenAPI schema
         continue-on-error: true
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_clm_db?sslmode=disable
           DJANGO_SECRET_KEY: test-secret-key-not-for-production
           DEBUG: 'False'
           SUPABASE_ONLY: 'False'
