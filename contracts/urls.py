@@ -4,7 +4,6 @@ URL configuration for contracts app - Consolidated
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from . import inhouse_esign_views
 from .template_views import (
     TemplateTypesView,
     TemplateTypeSummaryView,
@@ -67,16 +66,9 @@ urlpatterns = [
     path('<uuid:contract_id>/download-url/', views.get_contract_download_url, name='contract-download-url'),
     
     # ========== INHOUSE E-SIGNATURE ENDPOINTS ==========
-    path('inhouse/esign/start/', inhouse_esign_views.inhouse_start, name='inhouse_esign_start'),
-    path('inhouse/esign/requests/', inhouse_esign_views.inhouse_requests, name='inhouse_esign_requests'),
-    path('inhouse/esign/status/<uuid:contract_id>/', inhouse_esign_views.inhouse_status, name='inhouse_esign_status'),
-    path('inhouse/esign/audit/<uuid:contract_id>/', inhouse_esign_views.inhouse_audit, name='inhouse_esign_audit'),
-    path('inhouse/esign/executed/<uuid:contract_id>/', inhouse_esign_views.inhouse_download_executed, name='inhouse_esign_executed'),
-    path('inhouse/esign/certificate/<uuid:contract_id>/', inhouse_esign_views.inhouse_download_certificate, name='inhouse_esign_certificate'),
-    # signer-facing endpoints (no auth; token is the secret)
-    path('inhouse/esign/session/<uuid:token>/', inhouse_esign_views.inhouse_session, name='inhouse_esign_session'),
-    path('inhouse/esign/pdf/<uuid:token>/', inhouse_esign_views.inhouse_pdf, name='inhouse_esign_pdf'),
-    path('inhouse/esign/sign/<uuid:token>/', inhouse_esign_views.inhouse_sign, name='inhouse_esign_sign'),
+    # Keep in-house e-signature routing in its own module so it can be mounted
+    # both under /api/v1/ (via this file) and under /api/ as a compatibility alias.
+    path('', include('contracts.inhouse_urls')),
 
     # ========== HEALTH CHECK ENDPOINT ==========
     path('health/', views.HealthCheckView.as_view(), name='health-check'),

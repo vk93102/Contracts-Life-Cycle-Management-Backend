@@ -51,6 +51,7 @@ services:
     environment:
       DEBUG: ${DEBUG:-False}
       SECURITY_STRICT: ${SECURITY_STRICT:-True}
+      SUPABASE_ONLY: ${SUPABASE_ONLY:-False}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-clm_db}
       REDIS_URL: redis://redis:6379/0
@@ -97,6 +98,7 @@ services:
     command: celery -A clm_backend worker --loglevel=info
     environment:
       DEBUG: ${DEBUG:-False}
+      SUPABASE_ONLY: ${SUPABASE_ONLY:-False}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-clm_db}
       REDIS_URL: redis://redis:6379/0
@@ -126,6 +128,7 @@ services:
     command: celery -A clm_backend beat --loglevel=info
     environment:
       DEBUG: ${DEBUG:-False}
+      SUPABASE_ONLY: ${SUPABASE_ONLY:-False}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-clm_db}
       REDIS_URL: redis://redis:6379/0

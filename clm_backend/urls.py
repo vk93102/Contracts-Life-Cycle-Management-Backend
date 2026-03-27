@@ -8,11 +8,16 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from rest_framework.routers import DefaultRouter
 
+from clm_backend.health_views import HealthView
+
 router = DefaultRouter()
 
 urlpatterns = [
     path('admin/', admin_site.urls),
     path('metrics', metrics_view),
+
+    # Basic health endpoint for container orchestrators (Docker/Cloud Run/etc)
+    path('health/', HealthView.as_view(), name='health'),
 
     # OpenAPI/Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='openapi-schema'),
@@ -20,6 +25,11 @@ urlpatterns = [
 
     path('api/auth/', include('authentication.urls')),
     path('api/v1/admin/', include('authentication.admin_urls')),
+
+    # Compatibility alias: some deployments/proxies rewrite /api/v1/* -> /api/*
+    # Keep this scoped to inhouse e-sign only to avoid exposing the entire API twice.
+    path('api/', include('contracts.inhouse_urls')),
+
     path('api/', include('notifications.urls')),
     path('api/v1/', include('repository.private_upload_urls')),
     path('api/v1/', include('contracts.urls')),

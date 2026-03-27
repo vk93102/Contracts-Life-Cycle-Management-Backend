@@ -76,6 +76,9 @@ else:
 if SECURITY_STRICT and (not DEBUG) and SECRET_KEY == 'django-insecure-dev-key-12345':
     raise RuntimeError('DJANGO_SECRET_KEY must be set when SECURITY_STRICT is enabled')
 
+# Check if using SQLite for local development
+USE_SQLITE = os.getenv('DB_ENGINE', '').strip().lower() == 'sqlite3'
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -238,6 +241,7 @@ def _parse_database_url(database_url: str) -> dict:
 USING_SUPABASE_POOLER = 'pooler.supabase.com' in (DB_HOST or '')
 DEFAULT_CONN_MAX_AGE = 0 if USING_SUPABASE_POOLER else 60
 
+
 # If we are using Supabase pooler and the port is still set to the session pooler port, automatically
 # flip to transaction pooler port unless the user explicitly requested session mode.
 if USING_SUPABASE_POOLER:
@@ -268,17 +272,17 @@ DATABASES = {
             'keepalives_interval': int(os.getenv('DB_KEEPALIVES_INTERVAL', '10')),
             'keepalives_count': int(os.getenv('DB_KEEPALIVES_COUNT', '5')),
             # Server-side timeouts (ms)
-            'options': os.getenv('DB_PG_OPTIONS', '-c statement_timeout=120000 -c idle_in_transaction_session_timeout=120000'),
-        },
-        'TEST': {
-            # Use a stable Supabase test DB name; run tests with --keepdb.
-            'NAME': os.getenv('DB_TEST_NAME', 'test_postgres'),
-            # Default to running migrations so extensions required by models (pgvector/pg_trgm)
-            # are available during test database creation.
-            'MIGRATE': os.getenv('DB_TEST_MIGRATE', 'true').strip().lower() in ('1', 'true', 'yes', 'y', 'on'),
-        },
+                'options': os.getenv('DB_PG_OPTIONS', '-c statement_timeout=120000 -c idle_in_transaction_session_timeout=120000'),
+            },
+            'TEST': {
+                # Use a stable Supabase test DB name; run tests with --keepdb.
+                'NAME': os.getenv('DB_TEST_NAME', 'test_postgres'),
+                # Default to running migrations so extensions required by models (pgvector/pg_trgm)
+                # are available during test database creation.
+                'MIGRATE': os.getenv('DB_TEST_MIGRATE', 'true').strip().lower() in ('1', 'true', 'yes', 'y', 'on'),
+            },
+        }
     }
-}
 
 # Tests against Supabase should not keep long-lived connections open.
 # Persistent connections can prevent the test database from being dropped.
