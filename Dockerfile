@@ -46,6 +46,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Copy application code
 COPY . .
 
+# Entrypoint
+RUN chmod +x /app/entrypoint.sh
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
@@ -60,12 +63,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Expose port
 EXPOSE 8000
 
-# Run gunicorn
-CMD ["gunicorn", \
-    "--bind", "0.0.0.0:8000", \
-    "--workers", "4", \
-    "--timeout", "60", \
-    "--access-logfile", "-", \
-    "--error-logfile", "-", \
-    "--log-level", "info", \
-    "clm_backend.wsgi:application"]
+# Run via entrypoint (supports optional startup migrations)
+CMD ["/app/entrypoint.sh"]

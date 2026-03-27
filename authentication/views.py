@@ -102,6 +102,17 @@ def _bootstrap_admin_if_enabled(user: User) -> None:
         return
 
 
+def _tenant_id_claim(user: User) -> str | None:
+    """Return a safe tenant_id claim value for JWT payloads.
+
+    Important: do NOT stringify None ("None"), because many views filter UUIDFields
+    using this value and Django will raise a ValueError (500) for invalid UUIDs.
+    """
+
+    tenant_id = getattr(user, 'tenant_id', None)
+    return str(tenant_id) if tenant_id else None
+
+
 class TokenView(APIView):
     """POST /api/auth/login/ - Authenticate user and generate JWT token"""
     permission_classes = [AllowAny]
@@ -147,13 +158,14 @@ class TokenView(APIView):
         # Embed commonly needed claims so downstream requests don't require a DB lookup.
         is_admin = bool(user.is_staff or user.is_superuser)
         is_superadmin = bool(user.is_superuser)
+        tenant_id = _tenant_id_claim(user)
         refresh['email'] = user.email
-        refresh['tenant_id'] = str(user.tenant_id)
+        refresh['tenant_id'] = tenant_id
         refresh['is_admin'] = is_admin
         refresh['is_superadmin'] = is_superadmin
         access = refresh.access_token
         access['email'] = user.email
-        access['tenant_id'] = str(user.tenant_id)
+        access['tenant_id'] = tenant_id
         access['is_admin'] = is_admin
         access['is_superadmin'] = is_superadmin
         user.last_login = timezone.now()
@@ -165,7 +177,7 @@ class TokenView(APIView):
             'user': {
                 'user_id': str(user.user_id),
                 'email': user.email,
-                'tenant_id': str(user.tenant_id),
+                'tenant_id': tenant_id,
                 'is_admin': is_admin,
                 'is_superadmin': is_superadmin,
             }
@@ -380,13 +392,14 @@ class VerifyEmailOTPView(APIView):
             refresh = RefreshToken.for_user(user)
             is_admin = bool(user.is_staff or user.is_superuser)
             is_superadmin = bool(user.is_superuser)
+            tenant_id = _tenant_id_claim(user)
             refresh['email'] = user.email
-            refresh['tenant_id'] = str(user.tenant_id)
+            refresh['tenant_id'] = tenant_id
             refresh['is_admin'] = is_admin
             refresh['is_superadmin'] = is_superadmin
             access = refresh.access_token
             access['email'] = user.email
-            access['tenant_id'] = str(user.tenant_id)
+            access['tenant_id'] = tenant_id
             access['is_admin'] = is_admin
             access['is_superadmin'] = is_superadmin
             user.last_login = timezone.now()
@@ -398,7 +411,7 @@ class VerifyEmailOTPView(APIView):
                 'user': {
                     'user_id': str(user.user_id),
                     'email': user.email,
-                    'tenant_id': str(user.tenant_id),
+                    'tenant_id': tenant_id,
                     'is_admin': is_admin,
                     'is_superadmin': is_superadmin,
                 }
@@ -528,13 +541,14 @@ class GoogleLoginView(APIView):
         refresh = RefreshToken.for_user(user)
         is_admin = bool(user.is_staff or user.is_superuser)
         is_superadmin = bool(user.is_superuser)
+        tenant_id = _tenant_id_claim(user)
         refresh['email'] = user.email
-        refresh['tenant_id'] = str(user.tenant_id)
+        refresh['tenant_id'] = tenant_id
         refresh['is_admin'] = is_admin
         refresh['is_superadmin'] = is_superadmin
         access = refresh.access_token
         access['email'] = user.email
-        access['tenant_id'] = str(user.tenant_id)
+        access['tenant_id'] = tenant_id
         access['is_admin'] = is_admin
         access['is_superadmin'] = is_superadmin
 
@@ -548,7 +562,7 @@ class GoogleLoginView(APIView):
                 'user': {
                     'user_id': str(user.user_id),
                     'email': user.email,
-                    'tenant_id': str(user.tenant_id),
+                    'tenant_id': tenant_id,
                     'is_admin': is_admin,
                     'is_superadmin': is_superadmin,
                 },

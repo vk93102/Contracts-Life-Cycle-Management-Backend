@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 from io import BytesIO
@@ -44,6 +45,33 @@ from notifications.email_service import EmailService
 
 from .models import Contract, TemplateFile
 from .models import InhouseSignatureContract, InhouseSigner, InhouseSigningAuditLog
+
+
+def _tenant_id_or_response(request) -> uuid.UUID | Response:
+    """Get tenant UUID for the authenticated request.
+
+    The API uses stateless JWT auth (`JWTClaimsUser`) so `request.user.tenant_id`
+    is a *claim* (often a string). If the claim is missing/invalid (e.g. "None"),
+    UUIDField filters will raise and the request becomes a 500.
+
+    Return a Response (403/400) instead of raising.
+    """
+
+    raw = getattr(request.user, 'tenant_id', None)
+    if raw is None:
+        return Response({'error': 'User has no tenant_id assigned'}, status=status.HTTP_403_FORBIDDEN)
+
+    if isinstance(raw, uuid.UUID):
+        return raw
+
+    raw_str = str(raw).strip()
+    if not raw_str or raw_str.lower() == 'none':
+        return Response({'error': 'User has no tenant_id assigned'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        return uuid.UUID(raw_str)
+    except Exception:
+        return Response({'error': 'Invalid tenant_id in token'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 def _clamp_number(val: Any, min_v: float, max_v: float) -> float:
@@ -696,7 +724,10 @@ def inhouse_start(request):
     if not cleaned:
         return Response({'error': 'At least one valid signer is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    tenant_id = _tenant_id_or_response(request)
+    if isinstance(tenant_id, Response):
+        return tenant_id
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=tenant_id)
 
     sc, _ = InhouseSignatureContract.objects.get_or_create(contract=contract)
 
@@ -818,7 +849,10 @@ def inhouse_start(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def inhouse_status(request, contract_id: str):
-    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    tenant_id = _tenant_id_or_response(request)
+    if isinstance(tenant_id, Response):
+        return tenant_id
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=tenant_id)
     sc = get_object_or_404(InhouseSignatureContract, contract=contract)
 
     signers_response = []
@@ -863,7 +897,10 @@ def inhouse_status(request, contract_id: str):
 def inhouse_audit(request, contract_id: str):
     """Return audit logs for an in-house signing request (tenant scoped)."""
 
-    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    tenant_id = _tenant_id_or_response(request)
+    if isinstance(tenant_id, Response):
+        return tenant_id
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=tenant_id)
     sc = get_object_or_404(InhouseSignatureContract, contract=contract)
 
     try:
@@ -944,10 +981,14 @@ def inhouse_requests(request):
     if status_filter and status_filter != 'all' and status_filter not in allowed_statuses:
         return Response({'error': 'Invalid status filter'}, status=status.HTTP_400_BAD_REQUEST)
 
+    tenant_id = _tenant_id_or_response(request)
+    if isinstance(tenant_id, Response):
+        return tenant_id
+
     qs = (
         InhouseSignatureContract.objects.select_related('contract')
         .prefetch_related('signers')
-        .filter(contract__tenant_id=request.user.tenant_id)
+        .filter(contract__tenant_id=tenant_id)
     )
 
     if status_filter and status_filter != 'all':
@@ -1020,7 +1061,10 @@ def inhouse_requests(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def inhouse_download_executed(request, contract_id: str):
-    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    tenant_id = _tenant_id_or_response(request)
+    if isinstance(tenant_id, Response):
+        return tenant_id
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=tenant_id)
     sc = get_object_or_404(InhouseSignatureContract, contract=contract)
 
     if sc.status != 'completed' or not sc.executed_pdf:
@@ -1045,7 +1089,10 @@ def inhouse_download_executed(request, contract_id: str):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def inhouse_download_certificate(request, contract_id: str):
-    contract = get_object_or_404(Contract, id=contract_id, tenant_id=request.user.tenant_id)
+    tenant_id = _tenant_id_or_response(request)
+    if isinstance(tenant_id, Response):
+        return tenant_id
+    contract = get_object_or_404(Contract, id=contract_id, tenant_id=tenant_id)
     sc = get_object_or_404(InhouseSignatureContract, contract=contract)
 
     if sc.status != 'completed' or not sc.certificate_pdf:
