@@ -41,7 +41,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBUG=False \
-    SECURITY_STRICT=True
+    SECURITY_STRICT=False
 
 # Copy application code
 COPY . .
@@ -58,10 +58,10 @@ RUN python manage.py collectstatic --noinput || true
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import http.client; conn = http.client.HTTPConnection('localhost', 8000); conn.request('GET', '/health/'); exit(0 if conn.getresponse().status == 200 else 1)"
+    CMD python -c "import os, http.client; port=int(os.getenv('PORT','8080')); conn=http.client.HTTPConnection('localhost', port); conn.request('GET','/health/'); exit(0 if conn.getresponse().status==200 else 1)"
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8080
 
 # Run via entrypoint (supports optional startup migrations)
 CMD ["/app/entrypoint.sh"]
