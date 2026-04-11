@@ -72,6 +72,12 @@ if DEBUG:
 else:
     _hosts = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').strip()
     ALLOWED_HOSTS = [h.strip() for h in _hosts.split(',') if h.strip()]
+    
+    # On Cloud Run, also accept *.run.app and *.workers.dev domains dynamically
+    # Django ALLOWED_HOSTS supports: exact match, suffix match (leading dot), and wildcard subdomains
+    # Adding suffix match patterns for Cloud Run and Cloudflare Workers
+    if not any('*' in h for h in ALLOWED_HOSTS):
+        ALLOWED_HOSTS.extend(['.run.app', '.workers.dev'])
 
 if SECURITY_STRICT and (not DEBUG) and SECRET_KEY == 'django-insecure-dev-key-12345':
     raise RuntimeError('DJANGO_SECRET_KEY must be set when SECURITY_STRICT is enabled')

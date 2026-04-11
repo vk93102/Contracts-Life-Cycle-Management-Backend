@@ -3,6 +3,7 @@ substitutions:
   _SERVICE: lawflow
   _REPOSITORY: cloud-run-source-deploy
   _IMAGE_NAME: lawflow
+  _APP_BASE_URL: https://lawflow.lawflow-dev.workers.dev
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -31,6 +32,7 @@ steps:
       - ${_SERVICE}
       - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:$BUILD_ID
       - --region=${_REGION}
+      - --set-env-vars=FRONTEND_BASE_URL=${_APP_BASE_URL},APP_URL=${_APP_BASE_URL},ALLOWED_HOSTS=lawflow.lawflow-dev.workers.dev,CORS_ALLOWED_ORIGINS=${_APP_BASE_URL}
       - --quiet
 
 images:
